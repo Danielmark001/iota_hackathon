@@ -1,0 +1,9 @@
+{
+  "networkName": "shimmer",
+  "explorer": "https://explorer.evm.shimmer.network",
+  "chainId": 148,
+  "deployer": "0x3c0d9184692b1E34852d0F0be7adC3bd1Dbf0e15",
+  "bridgeAddress": "0xdba5b34dad633",
+  "lendingPoolAddress": "0x6b672d8782253",
+  "timestamp": "2025-04-24T15:40:11.941Z"
+}

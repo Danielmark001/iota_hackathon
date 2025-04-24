@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Line } from 'react-chartjs-2';
+import { Line, Doughnut, Bar } from 'react-chartjs-2';
 import { ethers } from 'ethers';
+import axios from 'axios';
 import LendingPoolABI from '../abis/LendingPool.json';
-import { LENDING_POOL_ADDRESS } from '../config';
+import { LENDING_POOL_ADDRESS, API_URL } from '../config';
 
 const Dashboard = ({ address, provider }) => {
   const [userStats, setUserStats] = useState({
@@ -11,6 +12,7 @@ const Dashboard = ({ address, provider }) => {
     collateral: 0,
     riskScore: 0,
     interestRate: 0,
+    healthFactor: 0,
   });
   
   const [marketStats, setMarketStats] = useState({
@@ -26,6 +28,10 @@ const Dashboard = ({ address, provider }) => {
   });
   
   const [recommendations, setRecommendations] = useState([]);
+  const [riskFactors, setRiskFactors] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('overview');
+  const [bridgeMessages, setBridgeMessages] = useState([]);
   
   useEffect(() => {
     if (address && provider) {
@@ -33,115 +39,230 @@ const Dashboard = ({ address, provider }) => {
       fetchMarketData();
       fetchHistoricalData();
       fetchRecommendations();
+      fetchBridgeMessages();
     }
   }, [address, provider]);
   
   const fetchUserData = async () => {
     try {
-      const contract = new ethers.Contract(
-        LENDING_POOL_ADDRESS,
-        LendingPoolABI,
-        provider
-      );
-      
-      const deposits = await contract.deposits(address);
-      const borrows = await contract.borrows(address);
-      const collateral = await contract.collaterals(address);
-      const riskScore = await contract.riskScores(address);
-      const interestRate = await contract.calculateInterestRate(address);
-      
-      setUserStats({
-        deposits: ethers.utils.formatEther(deposits),
-        borrows: ethers.utils.formatEther(borrows),
-        collateral: ethers.utils.formatEther(collateral),
-        riskScore: riskScore.toNumber(),
-        interestRate: interestRate.toNumber(),
-      });
+      setIsLoading(true);
+      const response = await axios.get(`${API_URL}/api/user/${address}`);
+      setUserStats(response.data);
+      setIsLoading(false);
     } catch (error) {
       console.error('Error fetching user data:', error);
+      setIsLoading(false);
     }
   };
   
   const fetchMarketData = async () => {
-    // Mock data for now
-    setMarketStats({
-      totalDeposits: '1,000,000',
-      totalBorrows: '750,000',
-      totalCollateral: '1,500,000',
-      utilizationRate: 75,
-    });
+    try {
+      const response = await axios.get(`${API_URL}/api/market`);
+      setMarketStats(response.data);
+    } catch (error) {
+      console.error('Error fetching market data:', error);
+    }
   };
   
   const fetchHistoricalData = async () => {
-    // Mock historical data
-    setHistoryData({
-      labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-      datasets: [
-        {
-          label: 'Risk Score',
-          data: [65, 59, 80, 81, 56, 55],
-          fill: false,
-          borderColor: 'rgb(75, 192, 192)',
-          tension: 0.1
-        },
-        {
-          label: 'Interest Rate',
-          data: [8, 7, 9, 10, 7, 6],
-          fill: false,
-          borderColor: 'rgb(255, 99, 132)',
-          tension: 0.1
-        }
-      ],
-    });
+    try {
+      const response = await axios.get(`${API_URL}/api/history/${address}`);
+      setHistoryData(response.data);
+    } catch (error) {
+      console.error('Error fetching historical data:', error);
+    }
   };
   
   const fetchRecommendations = async () => {
-    // Mock recommendations based on AI analysis
-    setRecommendations([
-      {
-        id: 1,
-        title: 'Diversify Your Collateral',
-        description: 'Adding different asset types as collateral can reduce your risk score by up to 10 points.',
-        impact: 'high',
-      },
-      {
-        id: 2,
-        title: 'Increase Repayment Frequency',
-        description: 'More frequent smaller repayments can improve your repayment pattern score.',
-        impact: 'medium',
-      },
-      {
-        id: 3,
-        title: 'Add More Collateral',
-        description: 'Your current collateralization ratio is lower than recommended.',
-        impact: 'high',
-      },
-    ]);
+    try {
+      // First try to get cached recommendations
+      const response = await axios.get(`${API_URL}/api/recommendations/${address}`);
+      setRecommendations(response.data);
+      
+      // Request a fresh risk assessment
+      const riskResponse = await axios.post(`${API_URL}/api/risk-assessment`, {
+        address,
+        onChainData: null // Let the backend fetch the data
+      });
+      
+      // Update with fresh data
+      setUserStats(prev => ({
+        ...prev,
+        riskScore: riskResponse.data.riskScore
+      }));
+      setRecommendations(riskResponse.data.recommendations);
+      setRiskFactors(riskResponse.data.topFactors);
+    } catch (error) {
+      console.error('Error fetching recommendations:', error);
+    }
+  };
+  
+  const fetchBridgeMessages = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/api/bridge/messages/${address}`);
+      setBridgeMessages(response.data.messages);
+    } catch (error) {
+      console.error('Error fetching bridge messages:', error);
+    }
+  };
+  
+  const handleDeposit = async () => {
+    // Implementation for deposit function
+    console.log('Deposit functionality to be implemented');
+  };
+  
+  const handleBorrow = async () => {
+    // Implementation for borrow function
+    console.log('Borrow functionality to be implemented');
+  };
+  
+  const handleRepay = async () => {
+    // Implementation for repay function
+    console.log('Repay functionality to be implemented');
+  };
+  
+  const handleWithdraw = async () => {
+    // Implementation for withdraw function
+    console.log('Withdraw functionality to be implemented');
   };
   
   // Risk score visualization
   const RiskMeter = ({ score }) => {
     let color = 'green';
-    if (score > 70) color = 'red';
-    else if (score > 40) color = 'orange';
+    let label = 'Low Risk';
+    
+    if (score > 70) {
+      color = 'red';
+      label = 'High Risk';
+    } else if (score > 40) {
+      color = 'orange';
+      label = 'Medium Risk';
+    }
+    
+    const doughnutData = {
+      labels: ['Risk Score', 'Remaining'],
+      datasets: [
+        {
+          data: [score, 100 - score],
+          backgroundColor: [color, '#f1f1f1'],
+          borderWidth: 0,
+          cutout: '80%'
+        }
+      ]
+    };
+    
+    const doughnutOptions = {
+      plugins: {
+        legend: {
+          display: false
+        },
+        tooltip: {
+          enabled: false
+        }
+      },
+      rotation: -90,
+      circumference: 180,
+      maintainAspectRatio: false
+    };
     
     return (
       <div className="risk-meter">
-        <h3>Risk Score</h3>
+        <h3>Risk Assessment</h3>
+        <div className="meter-container">
+          <Doughnut data={doughnutData} options={doughnutOptions} />
+          <div className="meter-label">
+            <span className="score-value">{score}</span>
+            <span className="risk-label">{label}</span>
+          </div>
+        </div>
+        <div className="meter-details">
+          <p>Your risk score affects your interest rate and borrowing capacity.</p>
+          <div className="risk-factors">
+            <h4>Top Risk Factors</h4>
+            <ul>
+              {riskFactors.map((factor, index) => (
+                <li key={index}>
+                  <span className="factor-name">{factor.Feature}</span>
+                  <span className="factor-impact" style={{ width: `${factor.Importance * 100}%` }}></span>
+                  <span className="factor-value">{(factor.Importance * 100).toFixed(1)}%</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+    );
+  };
+  
+  // Health factor visualization
+  const HealthFactorMeter = ({ healthFactor }) => {
+    let color = 'red';
+    let label = 'Unhealthy';
+    
+    if (healthFactor >= 2) {
+      color = 'green';
+      label = 'Very Healthy';
+    } else if (healthFactor >= 1.5) {
+      color = 'lightgreen';
+      label = 'Healthy';
+    } else if (healthFactor >= 1.1) {
+      color = 'orange';
+      label = 'Caution';
+    }
+    
+    return (
+      <div className="health-factor-meter">
+        <h3>Health Factor: {healthFactor.toFixed(2)}</h3>
         <div className="meter-container">
           <div 
             className="meter-fill" 
             style={{ 
-              width: `${score}%`, 
+              width: `${Math.min(healthFactor * 40, 100)}%`, 
               backgroundColor: color 
             }} 
           />
         </div>
         <div className="meter-labels">
-          <span>Low Risk</span>
-          <span>High Risk</span>
+          <span>Liquidation Risk</span>
+          <span>{label}</span>
         </div>
-        <div className="score-value">{score}</div>
+        <p className="health-factor-explanation">
+          Health factor below 1 will trigger liquidation. 
+          Keep it above 1.5 for safety margin.
+        </p>
+      </div>
+    );
+  };
+  
+  // Cross-layer bridge messaging visualization
+  const BridgeMessagesList = ({ messages }) => {
+    return (
+      <div className="bridge-messages">
+        <h3>Cross-Layer Messages</h3>
+        {messages.length === 0 ? (
+          <p>No messages found.</p>
+        ) : (
+          <table className="messages-table">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Timestamp</th>
+                <th>Target</th>
+              </tr>
+            </thead>
+            <tbody>
+              {messages.map((msg, index) => (
+                <tr key={index} className={`status-${msg.status.toLowerCase()}`}>
+                  <td>{msg.messageType}</td>
+                  <td>{msg.status}</td>
+                  <td>{new Date(msg.timestamp).toLocaleString()}</td>
+                  <td>{`${msg.targetAddress.substr(0, 6)}...${msg.targetAddress.substr(-4)}`}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     );
   };
@@ -150,81 +271,176 @@ const Dashboard = ({ address, provider }) => {
     <div className="dashboard">
       <h1>IntelliLend Dashboard</h1>
       
-      <div className="user-overview">
-        <h2>Your Overview</h2>
-        <div className="stats-grid">
-          <div className="stat-card">
-            <h3>Deposits</h3>
-            <p className="stat-value">{userStats.deposits} IOTA</p>
-          </div>
-          <div className="stat-card">
-            <h3>Borrows</h3>
-            <p className="stat-value">{userStats.borrows} IOTA</p>
-          </div>
-          <div className="stat-card">
-            <h3>Collateral</h3>
-            <p className="stat-value">{userStats.collateral} IOTA</p>
-          </div>
-          <div className="stat-card">
-            <h3>Interest Rate</h3>
-            <p className="stat-value">{userStats.interestRate}%</p>
-          </div>
-        </div>
-        
-        <div className="risk-section">
-          <RiskMeter score={userStats.riskScore} />
-          <div className="risk-explanation">
-            <h3>What affects your risk score?</h3>
-            <ul>
-              <li>Loan repayment history</li>
-              <li>Collateralization ratio</li>
-              <li>Wallet activity patterns</li>
-              <li>Transaction diversity</li>
-              <li>Cross-chain interactions</li>
-            </ul>
-          </div>
-        </div>
+      <div className="tabs">
+        <button 
+          className={activeTab === 'overview' ? 'active' : ''} 
+          onClick={() => setActiveTab('overview')}
+        >
+          Overview
+        </button>
+        <button 
+          className={activeTab === 'risk' ? 'active' : ''} 
+          onClick={() => setActiveTab('risk')}
+        >
+          Risk Analysis
+        </button>
+        <button 
+          className={activeTab === 'history' ? 'active' : ''} 
+          onClick={() => setActiveTab('history')}
+        >
+          History
+        </button>
+        <button 
+          className={activeTab === 'bridge' ? 'active' : ''} 
+          onClick={() => setActiveTab('bridge')}
+        >
+          Cross-Layer Bridge
+        </button>
       </div>
       
-      <div className="history-charts">
-        <h2>Historical Performance</h2>
-        <Line data={historyData} />
-      </div>
-      
-      <div className="ai-recommendations">
-        <h2>AI Recommendations</h2>
-        <div className="recommendations-list">
-          {recommendations.map(rec => (
-            <div key={rec.id} className={`recommendation-card impact-${rec.impact}`}>
-              <h3>{rec.title}</h3>
-              <p>{rec.description}</p>
-              <span className="impact-label">{rec.impact} impact</span>
+      {isLoading ? (
+        <div className="loading">Loading data...</div>
+      ) : (
+        <div className="tab-content">
+          {activeTab === 'overview' && (
+            <div className="overview-tab">
+              <div className="user-overview">
+                <h2>Your Overview</h2>
+                <div className="stats-grid">
+                  <div className="stat-card">
+                    <h3>Deposits</h3>
+                    <p className="stat-value">{parseFloat(userStats.deposits).toFixed(2)} IOTA</p>
+                    <button className="action-button" onClick={handleDeposit}>Deposit</button>
+                    <button className="action-button secondary" onClick={handleWithdraw}>Withdraw</button>
+                  </div>
+                  <div className="stat-card">
+                    <h3>Borrows</h3>
+                    <p className="stat-value">{parseFloat(userStats.borrows).toFixed(2)} IOTA</p>
+                    <button className="action-button" onClick={handleBorrow}>Borrow</button>
+                    <button className="action-button secondary" onClick={handleRepay}>Repay</button>
+                  </div>
+                  <div className="stat-card">
+                    <h3>Collateral</h3>
+                    <p className="stat-value">{parseFloat(userStats.collateral).toFixed(2)} IOTA</p>
+                    <button className="action-button">Add Collateral</button>
+                    <button className="action-button secondary">Remove Collateral</button>
+                  </div>
+                  <div className="stat-card">
+                    <h3>Interest Rate</h3>
+                    <p className="stat-value">{userStats.interestRate}%</p>
+                    <div className="interest-explanation">
+                      <p>Your personalized rate based on risk score and market conditions</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="health-overview">
+                  <HealthFactorMeter healthFactor={userStats.healthFactor} />
+                </div>
+                
+                <div className="market-overview">
+                  <h2>Market Overview</h2>
+                  <div className="stats-grid">
+                    <div className="stat-card">
+                      <h3>Total Deposits</h3>
+                      <p className="stat-value">{parseFloat(marketStats.totalDeposits).toLocaleString()} IOTA</p>
+                    </div>
+                    <div className="stat-card">
+                      <h3>Total Borrows</h3>
+                      <p className="stat-value">{parseFloat(marketStats.totalBorrows).toLocaleString()} IOTA</p>
+                    </div>
+                    <div className="stat-card">
+                      <h3>Total Collateral</h3>
+                      <p className="stat-value">{parseFloat(marketStats.totalCollateral).toLocaleString()} IOTA</p>
+                    </div>
+                    <div className="stat-card">
+                      <h3>Utilization Rate</h3>
+                      <p className="stat-value">{marketStats.utilizationRate}%</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-          ))}
+          )}
+          
+          {activeTab === 'risk' && (
+            <div className="risk-tab">
+              <div className="risk-analysis">
+                <div className="risk-meter-container">
+                  <RiskMeter score={userStats.riskScore} />
+                </div>
+                
+                <div className="ai-recommendations">
+                  <h2>AI Recommendations</h2>
+                  <div className="recommendations-list">
+                    {recommendations.map((rec, index) => (
+                      <div key={index} className={`recommendation-card impact-${rec.impact}`}>
+                        <h3>{rec.title}</h3>
+                        <p>{rec.description}</p>
+                        <span className="impact-label">{rec.impact} impact</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {activeTab === 'history' && (
+            <div className="history-tab">
+              <div className="history-charts">
+                <h2>Historical Performance</h2>
+                <Line data={historyData} />
+                
+                <div className="transaction-history">
+                  <h3>Recent Transactions</h3>
+                  {/* Transaction history would go here */}
+                  <p>Transaction history will be implemented in the next phase.</p>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {activeTab === 'bridge' && (
+            <div className="bridge-tab">
+              <h2>Cross-Layer Bridge</h2>
+              <p className="bridge-explanation">
+                IntelliLend leverages IOTA's dual-layer architecture for enhanced security and efficiency.
+                Layer 1 (Move) handles secure asset representation, while Layer 2 (EVM) manages lending operations.
+                The Cross-Layer Bridge enables communication between these layers.
+              </p>
+              
+              <div className="bridge-visualization">
+                <div className="layer layer-1">
+                  <h3>Layer 1 (Move)</h3>
+                  <ul>
+                    <li>Secure Asset Representation</li>
+                    <li>Identity Framework</li>
+                    <li>Object-Centric Design</li>
+                  </ul>
+                </div>
+                
+                <div className="bridge-connector">
+                  <span className="bridge-arrow down">↓</span>
+                  <span className="bridge-label">Cross-Layer Bridge</span>
+                  <span className="bridge-arrow up">↑</span>
+                </div>
+                
+                <div className="layer layer-2">
+                  <h3>Layer 2 (EVM)</h3>
+                  <ul>
+                    <li>Lending Operations</li>
+                    <li>Collateral Management</li>
+                    <li>Interest Rate Model</li>
+                  </ul>
+                </div>
+              </div>
+              
+              <BridgeMessagesList messages={bridgeMessages} />
+            </div>
+          )}
         </div>
-      </div>
-      
-      <div className="market-overview">
-        <h2>Market Overview</h2>
-        <div className="stats-grid">
-          <div className="stat-card">
-            <h3>Total Deposits</h3>
-            <p className="stat-value">{marketStats.totalDeposits} IOTA</p>
-          </div>
-          <div className="stat-card">
-            <h3>Total Borrows</h3>
-            <p className="stat-value">{marketStats.totalBorrows} IOTA</p>
-          </div>
-          <div className="stat-card">
-            <h3>Total Collateral</h3>
-            <p className="stat-value">{marketStats.totalCollateral} IOTA</p>
-          </div>
-          <div className="stat-card">
-            <h3>Utilization Rate</h3>
-            <p className="stat-value">{marketStats.utilizationRate}%</p>
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   );
 };

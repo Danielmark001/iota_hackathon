@@ -1,0 +1,9 @@
+{
+  "networkName": "simulation",
+  "explorer": "https://explorer.evm.testnet.shimmer.network",
+  "deployer": "0xfebfc0ebd981142b16a00de7c84af8aad5653a81",
+  "bridgeAddress": "0xb879e4c38b4ddb85b6814ecc90bc017fd788b10e",
+  "lendingPoolAddress": "0x30233164e435d972d67a0b712d74696ac121877b",
+  "timestamp": "2025-04-24T15:37:17.102Z",
+  "simulation": true
+}

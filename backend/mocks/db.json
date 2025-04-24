@@ -1,0 +1,31 @@
+{
+  "users": {
+    "0x3c0d9184692b1E34852d0F0be7adC3bd1Dbf0e15": {
+      "deposits": "1000",
+      "borrows": "500",
+      "collateral": "1500",
+      "riskScore": 25,
+      "healthFactor": 1.75
+    }
+  },
+  "market": {
+    "totalDeposits": "1000000",
+    "totalBorrows": "750000",
+    "totalCollateral": "1500000",
+    "utilizationRate": 75
+  },
+  "history": {
+    "labels": ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+    "datasets": [
+      {
+        "label": "Risk Score",
+        "data": [65, 59, 80, 81, 56, 25]
+      },
+      {
+        "label": "Interest Rate",
+        "data": [8, 7, 9, 10, 7, 6]
+      }
+    ]
+  },
+  "messages": []
+}

@@ -16,11 +16,7 @@ const logger = require('./utils/logger');
 const { errorMiddleware } = require('./middleware/errorMiddleware');
 
 // Import routes
-const lendingRoutes = require('./routes/lendingRoutes');
-const authRoutes = require('./routes/authRoutes');
-const userRoutes = require('./routes/userRoutes');
-const adminRoutes = require('./routes/adminRoutes');
-const bridgeRoutes = require('./routes/bridgeRoutes');
+const apiRoutes = require('./routes');
 
 // Initialize the app
 const app = express();
@@ -72,12 +68,8 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API Routes
-app.use('/api/lending', lendingRoutes);
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/bridge', bridgeRoutes);
+// Mount all API routes
+app.use('/api', apiRoutes);
 
 // Error handling middleware
 app.use(errorMiddleware);

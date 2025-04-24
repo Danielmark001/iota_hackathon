@@ -1,0 +1,43 @@
+{
+  "networks": {
+    "testnet": {
+      "rpcUrl": "https://json-rpc.evm.testnet.iotaledger.net",
+      "explorer": "https://explorer.evm.testnet.iotaledger.net",
+      "chainId": 1075
+    },
+    "shimmer": {
+      "rpcUrl": "https://json-rpc.evm.shimmer.network",
+      "explorer": "https://explorer.evm.shimmer.network",
+      "chainId": 148
+    },
+    "iota": {
+      "rpcUrl": "https://json-rpc.evm.iotaledger.net",
+      "explorer": "https://explorer.evm.iota.org",
+      "chainId": 8822
+    }
+  },
+  "contracts": {
+    "lendingPool": {
+      "name": "LendingPool",
+      "path": "smart-contracts/evm/LendingPool.sol"
+    },
+    "bridge": {
+      "name": "CrossLayerBridge",
+      "path": "smart-contracts/bridge/CrossLayerBridge.sol"
+    }
+  },
+  "tokens": {
+    "testnet": {
+      "lendingToken": "0x0000000000000000000000000000000000000000",
+      "collateralToken": "0x0000000000000000000000000000000000000000"
+    },
+    "shimmer": {
+      "lendingToken": "0x0000000000000000000000000000000000000000",
+      "collateralToken": "0x0000000000000000000000000000000000000000"
+    },
+    "iota": {
+      "lendingToken": "",
+      "collateralToken": ""
+    }
+  }
+}
