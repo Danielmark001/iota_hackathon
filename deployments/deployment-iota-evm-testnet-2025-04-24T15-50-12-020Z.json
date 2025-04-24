@@ -1,0 +1,9 @@
+{
+  "networkName": "iota-evm-testnet",
+  "explorer": "https://explorer.evm.testnet.iotaledger.net",
+  "chainId": 1075,
+  "deployer": "0x3c0d9184692b1E34852d0F0be7adC3bd1Dbf0e15",
+  "bridgeAddress": "0x3927f7bb49bba",
+  "lendingPoolAddress": "0xc7a262c882904",
+  "timestamp": "2025-04-24T15:50:12.019Z"
+}
