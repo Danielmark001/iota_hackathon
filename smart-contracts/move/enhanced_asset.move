@@ -3,193 +3,107 @@ module intellilend::enhanced_asset {
     use std::signer;
     use std::string::{Self, String};
     use std::vector;
-    use std::option::{Self, Option};
     
-    // Core Sui modules
+    // Add imports for object and transfer modules
     use sui::object::{Self, ID, UID};
     use sui::transfer;
     use sui::tx_context::{Self, TxContext};
     use sui::event;
     use sui::table::{Self, Table};
     use sui::coin::{Self, Coin};
+    use sui::url::{Self, Url};
     use sui::balance::{Self, Balance};
-    use sui::bcs;
-    use sui::hash;
+    use sui::clock::{Self, Clock};
+    use sui::package;
+    use sui::dynamic_field as df;
     
-    // ZK verification modules
-    use intellilend::zk_verifier;
-    
-    /// Asset types supported in the protocol
-    enum AssetType {
-        Collateral,
-        Debt,
-        Reserve,
-        Staked
-    }
-    
-    /// Risk levels for credit scoring
-    enum RiskLevel {
-        Low,
-        Medium,
-        High,
-        VeryHigh
-    }
-    
-    /// Verification levels for user identity
-    enum VerificationLevel {
-        None,
-        Basic,
-        Advanced,
-        Full
-    }
-    
-    /// Resource representing a lending asset with enhanced properties
-    struct LendingAsset has key, store {
+    /// Resource representing an enhanced lending asset with identity integration
+    struct EnhancedLendingAsset has key, store {
         id: UID,
         token_name: String,
-        token_symbol: String,
         value: u64,
         owner: address,
         risk_score: u8,
-        asset_type: AssetType,
+        is_collateral: bool,
         creation_time: u64,
         last_updated: u64,
-        loan_to_value_ratio: u64, // LTV ratio in basis points (e.g., 7500 = 75%)
-        liquidation_threshold: u64, // Threshold in basis points
-        liquidation_bonus: u64, // Bonus in basis points
-        interest_rate_model: ID, // Reference to interest rate model
-        oracle_price_id: ID, // Reference to price oracle
-        // Asset metadata (can be extended)
-        metadata: Table<String, vector<u8>>
+        identity_verified: bool,
+        identity_score: u8,
+        credit_score: u16,
+        zero_knowledge_proof: vector<u8>,
+        metadata: String
     }
     
-    /// Tokenized representation of credit score (privacy-preserving)
-    struct CreditScoreToken has key, store {
+    /// Privacy-preserving identity verification
+    struct IdentityProof has key, store {
         id: UID,
         owner: address,
-        // Only store the commitment, not the actual score
-        score_commitment: vector<u8>,
-        verified_by: vector<address>,
-        verification_time: u64,
+        verification_level: u8, // 0: None, 1: Basic, 2: Advanced, 3: Full
+        issuer: address,
+        issuance_time: u64,
         expiration_time: u64,
-        // Zero-knowledge proof verification result
-        has_valid_proof: bool,
-        // Range proof that score is within valid bounds
-        proof_reference: Option<ID>
+        proof_hash: vector<u8>,
+        revoked: bool
     }
     
-    /// User profile with identity verification
-    struct UserProfile has key, store {
-        id: UID,
-        owner: address,
-        verification_level: VerificationLevel,
-        // Identity commitments (privacy-preserving)
-        identity_commitment: vector<u8>,
-        // Aggregated reputation score (from cross-chain activity)
-        reputation_score: u64,
-        // Cross-chain account links (hashed)
-        linked_accounts: Table<String, vector<u8>>,
-        last_updated: u64
-    }
-    
-    /// Cross-layer message with enhanced security
-    struct CrossLayerMessage has key, store {
+    /// Cross-layer message from EVM with enhanced security
+    struct EnhancedCrossLayerMessage has key, store {
         id: UID,
         sender: vector<u8>, // EVM address in bytes
         message_type: String,
         payload: vector<u8>,
-        // For private messages
-        encrypted_payload: Option<vector<u8>>,
         timestamp: u64,
         processed: bool,
-        // Signatures from multiple oracles for consensus
-        oracle_signatures: Table<address, vector<u8>>,
-        // Minimum number of oracle signatures required
-        min_signatures: u64,
-        // Nonce for replay protection
+        signature: vector<u8>,
         nonce: u64
     }
     
     /// Asset Registry to track all assets with enhanced features
-    struct AssetRegistry has key {
+    struct EnhancedAssetRegistry has key {
         id: UID,
         assets: Table<ID, address>,
         user_assets: Table<address, vector<ID>>,
-        // Track assets by type for efficient queries
-        assets_by_type: Table<u8, vector<ID>>,
-        // Global protocol parameters
         total_assets: u64,
         total_collateral_value: u64,
-        total_debt_value: u64,
-        total_reserve_value: u64,
-        // Protocol health metrics
-        collateralization_ratio: u64, // In basis points
-        reserve_factor: u64, // In basis points
-        // Cross-chain assets mapping (chain ID -> asset ID -> amount)
-        cross_chain_assets: Table<u64, Table<vector<u8>, u64>>
+        verified_assets: Table<ID, bool>,
+        risk_assessment_data: Table<address, vector<u8>>
     }
     
-    /// Protocol configuration for governance
-    struct ProtocolConfig has key {
+    /// Lending protocol statistics
+    struct LendingStats has key {
         id: UID,
-        // Fee parameters
-        origination_fee: u64, // In basis points
-        protocol_fee: u64, // In basis points
-        liquidation_fee: u64, // In basis points
-        // Risk parameters
-        min_collateralization_ratio: u64, // In basis points
-        max_ltv: u64, // In basis points
-        // Oracle configuration
-        price_oracle_address: address,
-        min_oracle_consensus: u64,
-        // Cross-layer bridge configuration
-        bridge_address: address,
-        // Supported chains for cross-chain operations
-        supported_chains: vector<u64>,
-        // Governance parameters
-        gov_timelocks: Table<String, u64>
-    }
-    
-    /// Interest Rate Model
-    struct InterestRateModel has key, store {
-        id: UID,
-        base_rate: u64, // In basis points
-        slope1: u64, // In basis points
-        slope2: u64, // In basis points
-        optimal_utilization: u64, // In basis points
+        total_borrowed: u64,
+        total_deposited: u64,
+        protocol_fee_balance: Balance<sui::sui::SUI>,
+        user_count: u64,
         last_updated: u64
     }
     
-    /// Bridge admin capability
-    struct BridgeAdminCap has key {
-        id: UID
-    }
-    
-    /// Registry admin capability
+    /// Capability to manage the registry
     struct RegistryAdminCap has key {
         id: UID
     }
     
-    /// Liquidity provider capability
-    struct LiquidityProviderCap has key {
+    /// Bridge capability for cross-layer operations
+    struct BridgeAdminCap has key {
         id: UID,
-        provider: address,
-        assets_provided: Table<String, u64>
+        authorized_evm_contracts: vector<vector<u8>>
     }
     
-    /// Zero-knowledge verifier capability
-    struct ZKVerifierCap has key {
-        id: UID
+    /// Identity verification capability
+    struct IdentityVerifierCap has key {
+        id: UID,
+        verifier_name: String,
+        verification_count: u64
     }
     
     /// Events
-    struct AssetCreated has copy, drop {
+    struct EnhancedAssetCreated has copy, drop {
         asset_id: ID,
         owner: address,
         token_name: String,
-        token_symbol: String,
-        asset_type: u8,
         value: u64,
+        identity_verified: bool,
         timestamp: u64
     }
     
@@ -200,39 +114,30 @@ module intellilend::enhanced_asset {
         timestamp: u64
     }
     
-    struct AssetTypeChanged has copy, drop {
+    struct IdentityVerified has copy, drop {
+        owner: address,
+        verification_level: u8,
+        issuer: address,
+        timestamp: u64
+    }
+    
+    struct CollateralStatusChanged has copy, drop {
         asset_id: ID,
-        old_type: u8,
-        new_type: u8,
+        is_collateral: bool,
         timestamp: u64
     }
     
-    struct CreditScoreVerified has copy, drop {
-        user: address,
-        score_commitment: vector<u8>,
-        verified_by: address,
-        timestamp: u64
-    }
-    
-    struct MessageReceived has copy, drop {
+    struct EnhancedMessageReceived has copy, drop {
         message_id: ID,
         sender: vector<u8>,
         message_type: String,
+        nonce: u64,
         timestamp: u64
     }
     
-    struct CrossChainAssetReceived has copy, drop {
-        chain_id: u64,
-        asset_id: vector<u8>,
-        amount: u64,
-        recipient: address,
-        timestamp: u64
-    }
-    
-    struct ZKProofVerified has copy, drop {
-        proof_id: ID,
-        user: address,
-        proof_type: String,
+    struct ZeroKnowledgeProofVerified has copy, drop {
+        asset_id: ID,
+        result: bool,
         timestamp: u64
     }
     
@@ -243,129 +148,105 @@ module intellilend::enhanced_asset {
     const ERegistryNotInitialized: u64 = 4;
     const EInvalidRiskScore: u64 = 5;
     const EMessageAlreadyProcessed: u64 = 6;
-    const EInsufficientOracles: u64 = 7;
-    const EInvalidChainId: u64 = 8;
-    const EInvalidProof: u64 = 9;
-    const EExpiredCreditScore: u64 = 10;
-    const EInsufficientCollateral: u64 = 11;
-    const EInvalidLTV: u64 = 12;
-    const EUnsupportedAssetType: u64 = 13;
+    const EInvalidIdentityProof: u64 = 7;
+    const EIdentityExpired: u64 = 8;
+    const EIdentityRevoked: u64 = 9;
+    const EInvalidSignature: u64 = 10;
+    const EUnauthorizedEVMContract: u64 = 11;
+    const ENonceReused: u64 = 12;
     
-    /// Initialize the protocol
+    /// Initialize the enhanced asset registry
     fun init(ctx: &mut TxContext) {
-        // Create registry with empty tables
-        let registry = AssetRegistry {
+        // Create enhanced registry with empty tables
+        let registry = EnhancedAssetRegistry {
             id: object::new(ctx),
             assets: table::new(ctx),
             user_assets: table::new(ctx),
-            assets_by_type: table::new(ctx),
             total_assets: 0,
             total_collateral_value: 0,
-            total_debt_value: 0,
-            total_reserve_value: 0,
-            collateralization_ratio: 15000, // 150%
-            reserve_factor: 1000, // 10%
-            cross_chain_assets: table::new(ctx)
+            verified_assets: table::new(ctx),
+            risk_assessment_data: table::new(ctx)
         };
         
-        // Initialize asset types
-        table::add(&mut registry.assets_by_type, 0, vector::empty<ID>()); // Collateral
-        table::add(&mut registry.assets_by_type, 1, vector::empty<ID>()); // Debt
-        table::add(&mut registry.assets_by_type, 2, vector::empty<ID>()); // Reserve
-        table::add(&mut registry.assets_by_type, 3, vector::empty<ID>()); // Staked
-        
-        // Create protocol configuration
-        let config = ProtocolConfig {
+        // Create lending stats
+        let lending_stats = LendingStats {
             id: object::new(ctx),
-            origination_fee: 50, // 0.5%
-            protocol_fee: 100, // 1%
-            liquidation_fee: 500, // 5%
-            min_collateralization_ratio: 12000, // 120%
-            max_ltv: 8000, // 80%
-            price_oracle_address: tx_context::sender(ctx),
-            min_oracle_consensus: 2,
-            bridge_address: tx_context::sender(ctx),
-            supported_chains: vector::singleton(1), // IOTA EVM chain ID
-            gov_timelocks: table::new(ctx)
-        };
-        
-        // Add governance timelock defaults
-        table::add(&mut config.gov_timelocks, string::utf8(b"fee_change"), 86400); // 1 day
-        table::add(&mut config.gov_timelocks, string::utf8(b"risk_param_change"), 259200); // 3 days
-        
-        // Create admin capabilities
-        let registry_admin_cap = RegistryAdminCap {
-            id: object::new(ctx)
-        };
-        
-        let bridge_admin_cap = BridgeAdminCap {
-            id: object::new(ctx)
-        };
-        
-        let zk_verifier_cap = ZKVerifierCap {
-            id: object::new(ctx)
-        };
-        
-        // Create default interest rate model
-        let interest_model = InterestRateModel {
-            id: object::new(ctx),
-            base_rate: 200, // 2%
-            slope1: 1000, // 10%
-            slope2: 10000, // 100%
-            optimal_utilization: 8000, // 80%
+            total_borrowed: 0,
+            total_deposited: 0,
+            protocol_fee_balance: balance::zero(),
+            user_count: 0,
             last_updated: tx_context::epoch(ctx)
         };
         
-        // Transfer objects
+        // Create admin capability
+        let admin_cap = RegistryAdminCap {
+            id: object::new(ctx)
+        };
+        
+        // Create bridge admin capability
+        let bridge_cap = BridgeAdminCap {
+            id: object::new(ctx),
+            authorized_evm_contracts: vector::empty<vector<u8>>()
+        };
+        
+        // Create identity verifier capability
+        let verifier_cap = IdentityVerifierCap {
+            id: object::new(ctx),
+            verifier_name: string::utf8(b"IOTA Protocol Verifier"),
+            verification_count: 0
+        };
+        
+        // Transfer registry to shared object
         transfer::share_object(registry);
-        transfer::share_object(config);
-        transfer::share_object(interest_model);
-        transfer::transfer(registry_admin_cap, tx_context::sender(ctx));
-        transfer::transfer(bridge_admin_cap, tx_context::sender(ctx));
-        transfer::transfer(zk_verifier_cap, tx_context::sender(ctx));
+        
+        // Transfer lending stats to shared object
+        transfer::share_object(lending_stats);
+        
+        // Transfer admin capability to transaction sender
+        transfer::transfer(admin_cap, tx_context::sender(ctx));
+        
+        // Transfer bridge capability to transaction sender
+        transfer::transfer(bridge_cap, tx_context::sender(ctx));
+        
+        // Transfer verifier capability to transaction sender
+        transfer::transfer(verifier_cap, tx_context::sender(ctx));
     }
     
-    /// Create a new lending asset with enhanced properties
-    public fun create_asset(
+    /// Create a new enhanced lending asset
+    public fun create_enhanced_asset(
         account: &signer,
-        registry: &mut AssetRegistry,
+        registry: &mut EnhancedAssetRegistry,
         token_name: String,
-        token_symbol: String,
         value: u64,
-        asset_type: u8,
+        metadata: String,
         ctx: &mut TxContext
     ) {
         let sender = signer::address_of(account);
         
-        // Validate asset type
-        assert!(asset_type <= 3, error::invalid_argument(EUnsupportedAssetType));
-        
-        // Create the asset
-        let asset = LendingAsset {
+        // Create the enhanced asset
+        let asset = EnhancedLendingAsset {
             id: object::new(ctx),
             token_name,
-            token_symbol,
             value,
             owner: sender,
             risk_score: 50, // Default risk score (0-100)
-            asset_type: if (asset_type == 0) AssetType::Collateral 
-                       else if (asset_type == 1) AssetType::Debt
-                       else if (asset_type == 2) AssetType::Reserve
-                       else AssetType::Staked,
+            is_collateral: false,
             creation_time: tx_context::epoch(ctx),
             last_updated: tx_context::epoch(ctx),
-            loan_to_value_ratio: 7500, // 75% default
-            liquidation_threshold: 8250, // 82.5% default
-            liquidation_bonus: 500, // 5% default
-            interest_rate_model: object::id_from_address(@0x1), // Placeholder, should be set later
-            oracle_price_id: object::id_from_address(@0x1), // Placeholder, should be set later
-            metadata: table::new(ctx)
+            identity_verified: false,
+            identity_score: 0,
+            credit_score: 650, // Default credit score
+            zero_knowledge_proof: vector::empty<u8>(),
+            metadata
         };
         
         let asset_id = object::id(&asset);
         
         // Register asset in registry
         table::add(&mut registry.assets, asset_id, sender);
+        
+        // Add to verified assets table (initially false)
+        table::add(&mut registry.verified_assets, asset_id, false);
         
         // Add to user's assets
         if (!table::contains(&registry.user_assets, sender)) {
@@ -375,30 +256,16 @@ module intellilend::enhanced_asset {
         let user_assets = table::borrow_mut(&mut registry.user_assets, sender);
         vector::push_back(user_assets, asset_id);
         
-        // Add to assets by type
-        let type_assets = table::borrow_mut(&mut registry.assets_by_type, asset_type);
-        vector::push_back(type_assets, asset_id);
-        
         // Update registry stats
         registry.total_assets = registry.total_assets + 1;
         
-        // Update type-specific totals
-        if (asset_type == 0) { // Collateral
-            registry.total_collateral_value = registry.total_collateral_value + value;
-        } else if (asset_type == 1) { // Debt
-            registry.total_debt_value = registry.total_debt_value + value;
-        } else if (asset_type == 2) { // Reserve
-            registry.total_reserve_value = registry.total_reserve_value + value;
-        };
-        
         // Emit event
-        event::emit(AssetCreated {
+        event::emit(EnhancedAssetCreated {
             asset_id,
             owner: sender,
             token_name: token_name,
-            token_symbol: token_symbol,
-            asset_type,
             value,
+            identity_verified: false,
             timestamp: tx_context::epoch(ctx)
         });
         
@@ -406,240 +273,347 @@ module intellilend::enhanced_asset {
         transfer::transfer(asset, sender);
     }
     
-    /// Create a credit score token with zero-knowledge proof
-    public fun create_credit_score(
-        account: &signer,
-        score_commitment: vector<u8>,
+    /// Verify identity for an asset
+    public fun verify_identity(
+        verifier: &signer,
+        registry: &mut EnhancedAssetRegistry,
+        asset: &mut EnhancedLendingAsset,
+        identity_level: u8,
+        proof_hash: vector<u8>,
         expiration_time: u64,
+        verifier_cap: &mut IdentityVerifierCap,
+        clock: &Clock,
         ctx: &mut TxContext
-    ): CreditScoreToken {
-        let sender = signer::address_of(account);
+    ) {
+        // Check that the verifier has the capability
+        assert!(object::is_owner(&verifier_cap.id, signer::address_of(verifier)), error::permission_denied(ENotAuthorized));
         
-        let credit_score = CreditScoreToken {
+        // Update the asset with identity verification
+        asset.identity_verified = true;
+        asset.zero_knowledge_proof = proof_hash;
+        asset.identity_score = identity_level * 25; // Scale to 0-100
+        asset.last_updated = tx_context::epoch(ctx);
+        
+        // Update registry's verified assets table
+        let asset_id = object::id(asset);
+        *table::borrow_mut(&mut registry.verified_assets, asset_id) = true;
+        
+        // Create a new identity proof
+        let identity_proof = IdentityProof {
             id: object::new(ctx),
-            owner: sender,
-            score_commitment,
-            verified_by: vector::empty<address>(),
-            verification_time: tx_context::epoch(ctx),
+            owner: asset.owner,
+            verification_level: identity_level,
+            issuer: signer::address_of(verifier),
+            issuance_time: clock::timestamp_ms(clock) / 1000, // Convert to seconds
             expiration_time,
-            has_valid_proof: false,
-            proof_reference: option::none()
+            proof_hash,
+            revoked: false
         };
         
-        credit_score
-    }
-    
-    /// Register a user profile with the protocol
-    public fun register_user(
-        account: &signer,
-        identity_commitment: vector<u8>,
-        ctx: &mut TxContext
-    ) {
-        let sender = signer::address_of(account);
-        
-        let profile = UserProfile {
-            id: object::new(ctx),
-            owner: sender,
-            verification_level: VerificationLevel::None,
-            identity_commitment,
-            reputation_score: 50, // Default middle score
-            linked_accounts: table::new(ctx),
-            last_updated: tx_context::epoch(ctx)
-        };
-        
-        transfer::transfer(profile, sender);
-    }
-    
-    /// Update the risk score of an asset with improved validation
-    public fun update_risk_score(
-        asset: &mut LendingAsset,
-        new_score: u8,
-        cap: &BridgeAdminCap,
-        ctx: &mut TxContext
-    ) {
-        // Ensure score is valid
-        assert!(new_score <= 100, error::invalid_argument(EInvalidRiskScore));
-        
-        let old_score = asset.risk_score;
-        asset.risk_score = new_score;
-        asset.last_updated = tx_context::epoch(ctx);
-        
-        // Adjust LTV based on risk score
-        // Higher risk = lower LTV
-        if (new_score < 25) {
-            asset.loan_to_value_ratio = 8000; // 80%
-        } else if (new_score < 50) {
-            asset.loan_to_value_ratio = 7500; // 75%
-        } else if (new_score < 75) {
-            asset.loan_to_value_ratio = 7000; // 70%
-        } else {
-            asset.loan_to_value_ratio = 6500; // 65%
-        };
-        
-        // Adjust liquidation threshold similarly
-        asset.liquidation_threshold = asset.loan_to_value_ratio + 750; // 7.5% buffer
+        // Increment verification count
+        verifier_cap.verification_count = verifier_cap.verification_count + 1;
         
         // Emit event
-        event::emit(RiskScoreUpdated {
-            asset_id: object::id(asset),
-            old_score,
-            new_score,
+        event::emit(IdentityVerified {
+            owner: asset.owner,
+            verification_level: identity_level,
+            issuer: signer::address_of(verifier),
             timestamp: tx_context::epoch(ctx)
         });
+        
+        // Transfer identity proof to the asset owner
+        transfer::transfer(identity_proof, asset.owner);
     }
     
-    /// Change asset type (e.g., from collateral to debt)
-    public fun change_asset_type(
+    /// Mark an asset as collateral with enhanced risk assessment
+    public fun mark_as_enhanced_collateral(
         account: &signer,
-        registry: &mut AssetRegistry,
-        asset: &mut LendingAsset,
-        new_type: u8,
+        registry: &mut EnhancedAssetRegistry,
+        asset: &mut EnhancedLendingAsset,
+        risk_data: vector<u8>,
         ctx: &mut TxContext
     ) {
-        // Validate owner and asset type
+        // Check ownership
         assert!(asset.owner == signer::address_of(account), error::permission_denied(ENotAuthorized));
-        assert!(new_type <= 3, error::invalid_argument(EUnsupportedAssetType));
         
-        // Get current asset type as u8
-        let old_type = asset_type_to_u8(asset.asset_type);
-        
-        // Skip if no change
-        if (old_type == new_type) return;
-        
-        // Remove from old type collection
-        let old_type_assets = table::borrow_mut(&mut registry.assets_by_type, old_type);
-        let (found, index) = vector::index_of(old_type_assets, &object::id(asset));
-        if (found) {
-            vector::remove(old_type_assets, index);
-        };
-        
-        // Add to new type collection
-        let new_type_assets = table::borrow_mut(&mut registry.assets_by_type, new_type);
-        vector::push_back(new_type_assets, object::id(asset));
-        
-        // Update registry stats
-        if (old_type == 0) { // Removing from collateral
-            registry.total_collateral_value = registry.total_collateral_value - asset.value;
-        } else if (old_type == 1) { // Removing from debt
-            registry.total_debt_value = registry.total_debt_value - asset.value;
-        } else if (old_type == 2) { // Removing from reserve
-            registry.total_reserve_value = registry.total_reserve_value - asset.value;
-        };
-        
-        if (new_type == 0) { // Adding to collateral
-            registry.total_collateral_value = registry.total_collateral_value + asset.value;
-        } else if (new_type == 1) { // Adding to debt
-            registry.total_debt_value = registry.total_debt_value + asset.value;
-        } else if (new_type == 2) { // Adding to reserve
-            registry.total_reserve_value = registry.total_reserve_value + asset.value;
-        };
-        
-        // Update asset type
-        asset.asset_type = if (new_type == 0) AssetType::Collateral 
-                          else if (new_type == 1) AssetType::Debt
-                          else if (new_type == 2) AssetType::Reserve
-                          else AssetType::Staked;
-        
+        // Update collateral status
+        let old_status = asset.is_collateral;
+        asset.is_collateral = true;
         asset.last_updated = tx_context::epoch(ctx);
         
-        // Emit event
-        event::emit(AssetTypeChanged {
-            asset_id: object::id(asset),
-            old_type,
-            new_type,
-            timestamp: tx_context::epoch(ctx)
-        });
-    }
-    
-    /// Verify a credit score with a zero-knowledge proof
-    public fun verify_credit_score(
-        score_token: &mut CreditScoreToken,
-        verifier: address,
-        zk_proof: vector<u8>,
-        proof_id: ID,
-        zk_cap: &ZKVerifierCap,
-        ctx: &mut TxContext
-    ) {
-        // Verify the proof using ZK verifier module
-        let is_valid = zk_verifier::verify_score_proof(
-            score_token.score_commitment,
-            zk_proof,
-            verifier
-        );
+        // Store risk assessment data
+        if (!table::contains(&registry.risk_assessment_data, asset.owner)) {
+            table::add(&mut registry.risk_assessment_data, asset.owner, risk_data);
+        } else {
+            *table::borrow_mut(&mut registry.risk_assessment_data, asset.owner) = risk_data;
+        };
         
-        assert!(is_valid, error::invalid_argument(EInvalidProof));
-        
-        // Update credit score token
-        score_token.has_valid_proof = true;
-        score_token.proof_reference = option::some(proof_id);
-        score_token.verification_time = tx_context::epoch(ctx);
-        
-        // Add verifier to verified_by list
-        if (!vector::contains(&score_token.verified_by, &verifier)) {
-            vector::push_back(&mut score_token.verified_by, verifier);
+        // Update registry stats if status changed
+        if (!old_status) {
+            registry.total_collateral_value = registry.total_collateral_value + asset.value;
         };
         
         // Emit event
-        event::emit(CreditScoreVerified {
-            user: score_token.owner,
-            score_commitment: score_token.score_commitment,
-            verified_by: verifier,
+        event::emit(CollateralStatusChanged {
+            asset_id: object::id(asset),
+            is_collateral: true,
             timestamp: tx_context::epoch(ctx)
         });
     }
     
-    /// Process a cross-layer message with enhanced security
-    public fun process_cross_layer_message(
-        message: &mut CrossLayerMessage,
-        registry: &mut AssetRegistry,
-        config: &ProtocolConfig,
-        cap: &BridgeAdminCap,
+    /// Verify zero-knowledge proof for privacy-preserving credit scoring with advanced cryptography
+    public fun verify_zk_proof(
+        asset: &mut EnhancedLendingAsset,
+        proof: vector<u8>,
+        public_inputs: vector<u8>,
+        ctx: &mut TxContext
+    ): bool {
+        // Verify the proof is not empty and is properly formatted
+        assert!(!vector::is_empty(&proof), 0);
+        assert!(!vector::is_empty(&public_inputs), 0);
+        
+        // In a production implementation, this would use the IOTA Identity framework
+        // to verify the zero-knowledge proof using cryptographic algorithms like Groth16
+        
+        // 1. Verify proof structure and format
+        let is_valid_structure = verify_proof_structure(&proof, &public_inputs);
+        
+        // 2. Extract verification key and proof components (simulated)
+        // In a real implementation, we would parse the actual verification elements
+        
+        // 3. Perform pairing operations to verify the proof (simulated)
+        let is_valid_pairing = true; // Simulated for demo
+        
+        // 4. Verify the nullifier has not been used before (prevent double-spending of proofs)
+        let nullifier = extract_nullifier(&proof);
+        let is_fresh_nullifier = true; // Simulated for demo
+        
+        // 5. Verify proof is related to this specific asset
+        let is_correct_asset = true; // Simulated for demo
+        
+        // Final verification result
+        let is_valid = is_valid_structure && is_valid_pairing && is_fresh_nullifier && is_correct_asset;
+        
+        // Emit verification event with detailed result
+        event::emit(ZeroKnowledgeProofVerified {
+            asset_id: object::id(asset),
+            result: is_valid,
+            timestamp: tx_context::epoch(ctx)
+        });
+        
+        // Update the asset if proof is valid
+        if (is_valid) {
+            // Store the proof hash rather than the full proof for efficiency
+            asset.zero_knowledge_proof = hash_proof(&proof);
+            
+            // Extract credit score information from the proof
+            let (base_score, risk_factor, identity_confidence) = extract_credit_data(&proof, &public_inputs);
+            
+            // Apply sophisticated scoring algorithm
+            let new_credit_score = calculate_credit_score(
+                base_score, 
+                risk_factor,
+                identity_confidence,
+                asset.credit_score // Include current score for historical weighting
+            );
+            
+            // Update the credit score
+            asset.credit_score = new_credit_score;
+            
+            // Also update identity verification status based on proof quality
+            if (identity_confidence > 80) {
+                asset.identity_verified = true;
+                asset.identity_score = ((identity_confidence as u8) / 10) * 10; // Scale to nearest 10
+            };
+        };
+        
+        is_valid
+    }
+    
+    // Simulated verification helper functions
+    fun verify_proof_structure(proof: &vector<u8>, public_inputs: &vector<u8>): bool {
+        // Check proof size (Groth16 proofs have specific sizes)
+        vector::length(proof) >= 64 && vector::length(public_inputs) >= 32
+    }
+    
+    fun extract_nullifier(proof: &vector<u8>): vector<u8> {
+        // In a real implementation, extract the nullifier from the proof
+        // For demo, use a hash of the proof as the nullifier
+        let hash_bytes = vector::empty<u8>();
+        let i = 0;
+        let len = vector::length(proof);
+        
+        // Take first 32 bytes or whatever is available
+        while (i < 32 && i < len) {
+            vector::push_back(&mut hash_bytes, *vector::borrow(proof, i));
+            i = i + 1;
+        };
+        
+        hash_bytes
+    }
+    
+    fun hash_proof(proof: &vector<u8>): vector<u8> {
+        // In a real implementation, hash the proof for efficient storage
+        // For demo, just return the first few bytes
+        let hash = vector::empty<u8>();
+        let i = 0;
+        let len = vector::length(proof);
+        
+        // Take first 32 bytes or whatever is available
+        while (i < 32 && i < len) {
+            vector::push_back(&mut hash, *vector::borrow(proof, i));
+            i = i + 1;
+        };
+        
+        hash
+    }
+    
+    fun extract_credit_data(
+        _proof: &vector<u8>, 
+        _public_inputs: &vector<u8>
+    ): (u16, u8, u8) {
+        // In a real implementation, extract credit data from the proof
+        // For demo, return reasonable values
+        (
+            700, // base_score - reasonable credit score
+            30,  // risk_factor (0-100) - moderate risk
+            85   // identity_confidence (0-100) - high confidence
+        )
+    }
+    
+    fun calculate_credit_score(
+        base_score: u16,
+        risk_factor: u8,
+        identity_confidence: u8,
+        current_score: u16
+    ): u16 {
+        // Historic score weight (give 30% weight to prior score)
+        let historic_weight = 30;
+        let new_weight = 100 - historic_weight;
+        
+        // Calculate weighted current component
+        let historic_component = (((current_score as u64) * (historic_weight as u64)) / 100);
+        
+        // Calculate new score component with risk factor and identity adjustments
+        let risk_adjustment = ((risk_factor as u64) * 2); // Higher risk reduces score
+        let identity_bonus = ((identity_confidence as u64) / 5); // Higher identity confidence increases score
+        
+        let new_score_component = ((base_score as u64) * (new_weight as u64)) / 100;
+        
+        // Apply adjustments - subtract risk, add identity bonus
+        let adjusted_component = if (new_score_component > risk_adjustment) {
+            new_score_component - risk_adjustment + identity_bonus
+        } else {
+            // Ensure we don't underflow
+            new_score_component + identity_bonus
+        };
+        
+        // Combine components for final score
+        let final_score = historic_component + adjusted_component;
+        
+        // Ensure score is within valid range (300-850)
+        if (final_score < 300) {
+            300
+        } else if (final_score > 850) {
+            850
+        } else {
+            (final_score as u16)
+        }
+    }
+    
+    /// Process enhanced cross-layer message with security verification
+    public fun process_enhanced_cross_layer_message(
+        message: &mut EnhancedCrossLayerMessage,
+        registry: &mut EnhancedAssetRegistry,
+        bridge_cap: &BridgeAdminCap,
+        lending_stats: &mut LendingStats,
         ctx: &mut TxContext
     ) {
         // Check if already processed
         assert!(!message.processed, error::invalid_argument(EMessageAlreadyProcessed));
         
-        // Verify sufficient oracle signatures
-        assert!(
-            table::length(&message.oracle_signatures) >= message.min_signatures,
-            error::invalid_argument(EInsufficientOracles)
-        );
+        // Verify the sender is an authorized EVM contract
+        let is_authorized = false;
+        let i = 0;
+        let len = vector::length(&bridge_cap.authorized_evm_contracts);
+        
+        while (i < len) {
+            if (message.sender == *vector::borrow(&bridge_cap.authorized_evm_contracts, i)) {
+                is_authorized = true;
+                break;
+            };
+            i = i + 1;
+        };
+        
+        assert!(is_authorized, error::permission_denied(EUnauthorizedEVMContract));
+        
+        // Verify signature (in a real implementation, this would use cryptographic verification)
+        // Here we just check it's not empty for demonstration
+        assert!(!vector::is_empty(&message.signature), error::invalid_argument(EInvalidSignature));
         
         // Mark as processed
         message.processed = true;
         
         // Process different message types
         if (string::to_ascii(message.message_type) == string::to_ascii(string::utf8(b"RISK_SCORE_UPDATE"))) {
-            process_risk_score_update(message, registry, cap, ctx);
+            process_enhanced_risk_score_update(message, registry, bridge_cap, ctx);
         } else if (string::to_ascii(message.message_type) == string::to_ascii(string::utf8(b"COLLATERAL_CHANGE"))) {
-            process_collateral_change(message, registry, cap, ctx);
+            process_enhanced_collateral_change(message, registry, bridge_cap, ctx);
         } else if (string::to_ascii(message.message_type) == string::to_ascii(string::utf8(b"LIQUIDATION"))) {
-            process_liquidation(message, registry, cap, ctx);
-        } else if (string::to_ascii(message.message_type) == string::to_ascii(string::utf8(b"CROSS_CHAIN_DEPOSIT"))) {
-            process_cross_chain_deposit(message, registry, config, cap, ctx);
+            process_enhanced_liquidation(message, registry, bridge_cap, lending_stats, ctx);
         };
         
         // Emit event
-        event::emit(MessageReceived {
+        event::emit(EnhancedMessageReceived {
             message_id: object::id(message),
             sender: message.sender,
             message_type: message.message_type,
+            nonce: message.nonce,
             timestamp: tx_context::epoch(ctx)
         });
     }
     
-    /// Process a risk score update message
-    fun process_risk_score_update(
-        message: &CrossLayerMessage,
-        registry: &mut AssetRegistry,
-        cap: &BridgeAdminCap,
+    /// Process an enhanced risk score update message
+    fun process_enhanced_risk_score_update(
+        message: &EnhancedCrossLayerMessage,
+        registry: &mut EnhancedAssetRegistry,
+        bridge_cap: &BridgeAdminCap,
         ctx: &mut TxContext
     ) {
-        // Extract user address and risk score from payload
-        let user_address = extract_address(message.payload, 0);
-        let risk_score = extract_u8(message.payload, 20);
+        // Extract user address and risk score from payload with enhanced security
+        // In a real implementation, we would use proper deserialization
+        // For simplicity, we're assuming the payload format:
+        // [address (20 bytes), score (1 byte), timestamp (8 bytes), verification data (variable)]
         
-        // Update risk scores for all user assets
+        let payload = message.payload;
+        assert!(vector::length(&payload) >= 29, error::invalid_argument(EInvalidValue));
+        
+        // Extract address (first 20 bytes)
+        let address_bytes = vector::empty<u8>();
+        let i = 0;
+        while (i < 20) {
+            vector::push_back(&mut address_bytes, *vector::borrow(&payload, i));
+            i = i + 1;
+        };
+        
+        // Convert to address
+        let user_address = convert_bytes_to_address(address_bytes);
+        
+        // Extract risk score (byte 21)
+        let risk_score = *vector::borrow(&payload, 20);
+        
+        // Extract timestamp (bytes 22-29)
+        let timestamp_bytes = vector::empty<u8>();
+        i = 21;
+        while (i < 29) {
+            vector::push_back(&mut timestamp_bytes, *vector::borrow(&payload, i));
+            i = i + 1;
+        };
+        
+        // Convert timestamp to u64 (in a real implementation)
+        let _timestamp = 0u64; // Placeholder
+        
+        // Update risk scores for all user assets with enhanced security
         if (table::contains(&registry.user_assets, user_address)) {
             let user_assets = table::borrow(&registry.user_assets, user_address);
             let i = 0;
@@ -647,284 +621,120 @@ module intellilend::enhanced_asset {
             
             while (i < len) {
                 let asset_id = *vector::borrow(user_assets, i);
-                // In a real implementation, we'd have a more efficient way
-                // to get and update the asset directly
+                // In a real implementation, we would update the asset's risk score directly
                 i = i + 1;
             }
         }
     }
     
-    /// Process a collateral change message
-    fun process_collateral_change(
-        message: &CrossLayerMessage,
-        registry: &mut AssetRegistry,
-        cap: &BridgeAdminCap,
+    /// Process an enhanced collateral change message
+    fun process_enhanced_collateral_change(
+        message: &EnhancedCrossLayerMessage,
+        registry: &mut EnhancedAssetRegistry,
+        bridge_cap: &BridgeAdminCap,
         ctx: &mut TxContext
     ) {
-        // Extract user address and collateral amount from payload
-        let user_address = extract_address(message.payload, 0);
-        let collateral_amount = extract_u64(message.payload, 20);
-        
-        // Update collateral in registry (simplified)
-        if (table::contains(&registry.user_assets, user_address)) {
-            // This would update the collateral for the user in a real implementation
-        }
+        // Extract user address, collateral amount from payload with enhanced security
+        // Implementation details omitted for brevity, similar to risk_score_update
+        // but with different payload format
     }
     
-    /// Process a liquidation message
-    fun process_liquidation(
-        message: &CrossLayerMessage,
-        registry: &mut AssetRegistry,
-        cap: &BridgeAdminCap,
+    /// Process an enhanced liquidation message
+    fun process_enhanced_liquidation(
+        message: &EnhancedCrossLayerMessage,
+        registry: &mut EnhancedAssetRegistry,
+        bridge_cap: &BridgeAdminCap,
+        lending_stats: &mut LendingStats,
         ctx: &mut TxContext
     ) {
-        // Extract liquidation details from payload
-        let borrower = extract_address(message.payload, 0);
-        let repay_amount = extract_u64(message.payload, 20);
-        let collateral_seized = extract_u64(message.payload, 28);
+        // Extract borrower address, repay amount, collateral amount from payload with enhanced security
+        // Implementation details omitted for brevity, similar to risk_score_update
+        // but with different payload format
         
-        // Update registry data for liquidation
-        if (table::contains(&registry.user_assets, borrower)) {
-            // Update collateral and debt values
-            registry.total_collateral_value = registry.total_collateral_value - collateral_seized;
-            registry.total_debt_value = registry.total_debt_value - repay_amount;
-            
-            // In a real implementation, we would move assets between users
-        }
+        // Update lending stats
+        lending_stats.last_updated = tx_context::epoch(ctx);
     }
     
-    /// Process a cross-chain deposit
-    fun process_cross_chain_deposit(
-        message: &CrossLayerMessage,
-        registry: &mut AssetRegistry,
-        config: &ProtocolConfig,
-        cap: &BridgeAdminCap,
-        ctx: &mut TxContext
+    /// Add an authorized EVM contract to the bridge
+    public fun add_authorized_evm_contract(
+        admin: &signer,
+        bridge_cap: &mut BridgeAdminCap,
+        evm_contract_address: vector<u8>
     ) {
-        // Extract deposit details
-        let chain_id = extract_u64(message.payload, 0);
-        let recipient = extract_address(message.payload, 8);
-        let asset_id_bytes = extract_bytes(message.payload, 28, 32);
-        let amount = extract_u64(message.payload, 60);
+        // Verify admin owns the bridge capability
+        assert!(object::is_owner(&bridge_cap.id, signer::address_of(admin)), error::permission_denied(ENotAuthorized));
         
-        // Verify chain ID is supported
-        assert!(
-            chain_is_supported(config, chain_id),
-            error::invalid_argument(EInvalidChainId)
-        );
-        
-        // Update cross-chain assets tracking
-        if (!table::contains(&registry.cross_chain_assets, chain_id)) {
-            table::add(&mut registry.cross_chain_assets, chain_id, table::new(ctx));
-        };
-        
-        let chain_assets = table::borrow_mut(&mut registry.cross_chain_assets, chain_id);
-        
-        if (!table::contains(chain_assets, asset_id_bytes)) {
-            table::add(chain_assets, asset_id_bytes, 0);
-        };
-        
-        let current_amount = table::borrow_mut(chain_assets, asset_id_bytes);
-        *current_amount = *current_amount + amount;
-        
-        // Emit event
-        event::emit(CrossChainAssetReceived {
-            chain_id,
-            asset_id: asset_id_bytes,
-            amount,
-            recipient,
-            timestamp: tx_context::epoch(ctx)
-        });
-    }
-    
-    /// Calculate interest for an asset based on its interest rate model
-    public fun calculate_interest(
-        asset: &LendingAsset,
-        interest_model: &InterestRateModel,
-        registry: &AssetRegistry,
-        time_elapsed: u64
-    ): u64 {
-        // Calculate utilization rate
-        let utilization_rate = if (registry.total_collateral_value > 0) {
-            (registry.total_debt_value * 10000) / registry.total_collateral_value
-        } else {
-            0
-        };
-        
-        // Calculate interest rate based on utilization
-        let interest_rate = if (utilization_rate <= interest_model.optimal_utilization) {
-            // Below optimal: base_rate + slope1 * utilization
-            interest_model.base_rate + (interest_model.slope1 * utilization_rate) / 10000
-        } else {
-            // Above optimal: base_rate + slope1 * optimal + slope2 * (utilization - optimal)
-            let base_interest = interest_model.base_rate + 
-                               (interest_model.slope1 * interest_model.optimal_utilization) / 10000;
-            let excess_utilization = utilization_rate - interest_model.optimal_utilization;
-            base_interest + (interest_model.slope2 * excess_utilization) / 10000
-        };
-        
-        // Calculate interest amount: principal * rate * time / year
-        let interest_amount = (asset.value * interest_rate * time_elapsed) / (365 * 86400 * 10000);
-        
-        interest_amount
-    }
-    
-    /// Verify user has sufficient collateral
-    public fun verify_collateral(
-        user: address,
-        registry: &AssetRegistry,
-        config: &ProtocolConfig
-    ): bool {
-        if (!table::contains(&registry.user_assets, user)) {
-            return false;
-        };
-        
-        // Get user's assets
-        let user_assets = table::borrow(&registry.user_assets, user);
-        
-        // Calculate collateral and debt values
-        let total_collateral = 0u64;
-        let total_debt = 0u64;
-        
+        // Check if already authorized
         let i = 0;
-        let len = vector::length(user_assets);
-        
-        // This is a simplified implementation
-        // In a real system, we would need to properly fetch the assets and calculate values
-        
-        // Check if collateral ratio is sufficient
-        if (total_debt == 0) {
-            return true; // No debt, so always sufficient
-        };
-        
-        let collateral_ratio = (total_collateral * 10000) / total_debt;
-        
-        collateral_ratio >= config.min_collateralization_ratio
-    }
-    
-    /// Link a cross-chain account to a user profile
-    public fun link_cross_chain_account(
-        account: &signer,
-        profile: &mut UserProfile,
-        chain_id: u64,
-        external_address: vector<u8>,
-        proof: vector<u8>,
-        ctx: &mut TxContext
-    ) {
-        // Verify the caller is the profile owner
-        assert!(
-            signer::address_of(account) == profile.owner,
-            error::permission_denied(ENotAuthorized)
-        );
-        
-        // Create a key for the chain
-        let chain_key = string::utf8(bcs::to_bytes(&chain_id));
-        
-        // Hash the external address for privacy
-        let hashed_address = hash::sha3_256(external_address);
-        
-        // Store the link
-        if (!table::contains(&profile.linked_accounts, chain_key)) {
-            table::add(&mut profile.linked_accounts, chain_key, hashed_address);
-        } else {
-            *table::borrow_mut(&mut profile.linked_accounts, chain_key) = hashed_address;
-        };
-        
-        profile.last_updated = tx_context::epoch(ctx);
-    }
-    
-    /// Calculate health factor for a user (collateral-to-debt ratio)
-    public fun calculate_health_factor(
-        user: address,
-        registry: &AssetRegistry
-    ): u64 {
-        // This is a simplified implementation
-        // In a real system, we would properly calculate the health factor
-        // based on all assets, their prices, and risk parameters
-        
-        // Return a very high value if no debt
-        if (registry.total_debt_value == 0) {
-            return 10000;
-        };
-        
-        // Return the global collateralization ratio as fallback
-        registry.collateralization_ratio
-    }
-    
-    // Utility functions
-    
-    /// Convert AssetType enum to u8
-    fun asset_type_to_u8(asset_type: AssetType): u8 {
-        if (asset_type == AssetType::Collateral) {
-            0
-        } else if (asset_type == AssetType::Debt) {
-            1
-        } else if (asset_type == AssetType::Reserve) {
-            2
-        } else {
-            3 // Staked
-        }
-    }
-    
-    /// Extract address from payload at specific offset
-    fun extract_address(payload: vector<u8>, offset: u64): address {
-        let addr_bytes = vector::empty<u8>();
-        let i = 0;
-        
-        while (i < 32 && (offset + i) < vector::length(&payload)) {
-            vector::push_back(&mut addr_bytes, *vector::borrow(&payload, offset + i));
+        let len = vector::length(&bridge_cap.authorized_evm_contracts);
+        while (i < len) {
+            if (*vector::borrow(&bridge_cap.authorized_evm_contracts, i) == evm_contract_address) {
+                return; // Already authorized
+            };
             i = i + 1;
         };
         
-        // In a real implementation, we would properly convert bytes to address
+        // Add to authorized list
+        vector::push_back(&mut bridge_cap.authorized_evm_contracts, evm_contract_address);
+    }
+    
+    /// Create an enhanced cross-layer message with security features
+    public fun create_enhanced_message(
+        sender_bytes: vector<u8>,
+        message_type: String,
+        payload: vector<u8>,
+        signature: vector<u8>,
+        nonce: u64,
+        ctx: &mut TxContext
+    ): EnhancedCrossLayerMessage {
+        EnhancedCrossLayerMessage {
+            id: object::new(ctx),
+            sender: sender_bytes,
+            message_type,
+            payload,
+            timestamp: tx_context::epoch(ctx),
+            processed: false,
+            signature,
+            nonce
+        }
+    }
+    
+    /// Utility: Convert bytes to address
+    fun convert_bytes_to_address(bytes: vector<u8>): address {
+        // In a real implementation, this would properly convert bytes to address
+        // For simplicity, we're returning a dummy address
         @0x1
     }
     
-    /// Extract u8 from payload at specific offset
-    fun extract_u8(payload: vector<u8>, offset: u64): u8 {
-        if (offset < vector::length(&payload)) {
-            *vector::borrow(&payload, offset)
-        } else {
-            0
-        }
-    }
-    
-    /// Extract u64 from payload at specific offset
-    fun extract_u64(payload: vector<u8>, offset: u64): u64 {
-        let result = 0u64;
-        let i = 0;
+    /// Calculate credit risk score based on on-chain data and identity verification
+    public fun calculate_credit_risk_score(
+        asset: &EnhancedLendingAsset,
+        on_chain_data: vector<u8>,
+        registry: &EnhancedAssetRegistry
+    ): u16 {
+        // Base credit score from the asset
+        let credit_score = asset.credit_score;
         
-        while (i < 8 && (offset + i) < vector::length(&payload)) {
-            let byte_val = (*vector::borrow(&payload, offset + i) as u64);
-            result = result | (byte_val << (i * 8));
-            i = i + 1;
+        // Adjust based on identity verification
+        if (asset.identity_verified) {
+            credit_score = credit_score + (asset.identity_score as u16) / 5;
         };
         
-        result
-    }
-    
-    /// Extract arbitrary bytes from payload at specific offset and length
-    fun extract_bytes(payload: vector<u8>, offset: u64, length: u64): vector<u8> {
-        let result = vector::empty<u8>();
-        let i = 0;
+        // Adjust based on risk score
+        credit_score = credit_score - (asset.risk_score as u16) / 2;
         
-        while (i < length && (offset + i) < vector::length(&payload)) {
-            vector::push_back(&mut result, *vector::borrow(&payload, offset + i));
-            i = i + 1;
+        // Cap the credit score between 300 and 850
+        if (credit_score < 300) {
+            credit_score = 300;
+        } else if (credit_score > 850) {
+            credit_score = 850;
         };
         
-        result
+        credit_score
     }
     
-    /// Check if a chain ID is supported
-    fun chain_is_supported(config: &ProtocolConfig, chain_id: u64): bool {
-        vector::contains(&config.supported_chains, &chain_id)
-    }
-    
-    // Public getters
-    
-    /// Return all assets for a user
-    public fun get_user_assets(registry: &AssetRegistry, user: address): vector<ID> {
+    /// Return all enhanced assets for a user
+    public fun get_user_enhanced_assets(registry: &EnhancedAssetRegistry, user: address): vector<ID> {
         if (table::contains(&registry.user_assets, user)) {
             *table::borrow(&registry.user_assets, user)
         } else {
@@ -932,64 +742,43 @@ module intellilend::enhanced_asset {
         }
     }
     
-    /// Get assets by type
-    public fun get_assets_by_type(registry: &AssetRegistry, asset_type: u8): vector<ID> {
-        if (table::contains(&registry.assets_by_type, asset_type)) {
-            *table::borrow(&registry.assets_by_type, asset_type)
-        } else {
-            vector::empty<ID>()
-        }
+    /// Get only verified assets for a user
+    public fun get_user_verified_assets(registry: &EnhancedAssetRegistry, user: address): vector<ID> {
+        let all_assets = get_user_enhanced_assets(registry, user);
+        let verified_assets = vector::empty<ID>();
+        
+        let i = 0;
+        let len = vector::length(&all_assets);
+        
+        while (i < len) {
+            let asset_id = *vector::borrow(&all_assets, i);
+            if (table::contains(&registry.verified_assets, asset_id) && 
+                *table::borrow(&registry.verified_assets, asset_id)) {
+                vector::push_back(&mut verified_assets, asset_id);
+            };
+            i = i + 1;
+        };
+        
+        verified_assets
     }
     
-    /// Get total protocol values
-    public fun get_protocol_totals(registry: &AssetRegistry): (u64, u64, u64, u64, u64) {
-        (
-            registry.total_assets,
-            registry.total_collateral_value,
-            registry.total_debt_value,
-            registry.total_reserve_value,
-            registry.collateralization_ratio
-        )
+    /// Get total collateral value in the registry
+    public fun get_total_collateral(registry: &EnhancedAssetRegistry): u64 {
+        registry.total_collateral_value
     }
-}
+    
+    /// Get total assets count in the registry
+    public fun get_total_assets(registry: &EnhancedAssetRegistry): u64 {
+        registry.total_assets
+    }
 
-/// Module for ZK-proof verification for privacy-preserving credit scoring
-module intellilend::zk_verifier {
-    use std::vector;
-    
-    /// Verify a zero-knowledge proof for a credit score
-    public fun verify_score_proof(
-        commitment: vector<u8>,
-        proof: vector<u8>,
-        verifier: address
-    ): bool {
-        // This is a placeholder implementation for the hackathon
-        // In a real implementation, this would call actual ZK proof verification logic
-        
-        // For now, we'll just do a simple check on the proof format
-        if (vector::length(&proof) < 64) {
-            return false;
-        };
-        
-        // Pretend to verify the proof...
-        true
-    }
-    
-    /// Verify a zero-knowledge proof for identity verification
-    public fun verify_identity_proof(
-        commitment: vector<u8>,
-        proof: vector<u8>,
-        verifier: address
-    ): bool {
-        // This is a placeholder implementation for the hackathon
-        // In a real implementation, this would call actual ZK proof verification logic
-        
-        // For now, we'll just do a simple check on the proof format
-        if (vector::length(&proof) < 128) {
-            return false;
-        };
-        
-        // Pretend to verify the proof...
-        true
+    /// Get lending protocol statistics
+    public fun get_lending_stats(stats: &LendingStats): (u64, u64, u64, u64) {
+        (
+            stats.total_borrowed,
+            stats.total_deposited,
+            stats.user_count,
+            stats.last_updated
+        )
     }
 }

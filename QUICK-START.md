@@ -1,131 +1,150 @@
-# IntelliLend Quick Start Guide
+# IntelliLend - AI-Powered DeFi Lending Platform on IOTA
 
-This guide will help you quickly set up and run the IntelliLend demo to showcase the platform's features.
+## Quick Start Guide
 
-## Prerequisites
+This document provides instructions for setting up and running the IntelliLend demo for the IOTA DefAI Hackathon.
 
-- Node.js (v16+)
-- Python (v3.8+)
+### Project Overview
+
+IntelliLend is an intelligent lending protocol that leverages IOTA's unique architecture and AI to revolutionize DeFi lending. It uses machine learning to assess borrower risk, optimize interest rates, and enhance the security and efficiency of lending operations.
+
+Key features:
+- **AI Risk Assessment**: Advanced machine learning models analyze on-chain activity to determine personalized risk scores
+- **Privacy-Preserving Identity**: Zero-knowledge proofs for secure user verification without compromising privacy
+- **Cross-Chain Liquidity**: Leverage IOTA's cross-chain capabilities for optimal capital efficiency
+- **Move-based Asset Security**: Secure asset representation using Move's object-centric model on Layer 1
+- **Dynamic Interest Rates**: AI-optimized interest rates based on user risk profiles and market conditions
+
+### System Requirements
+
+- Node.js v16+ 
+- npm v8+
+- Python 3.8+ (for AI model)
 - Git
 
-## Installation
+### Installation
 
 1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/intellilend.git
-   cd intellilend
+   ```
+   git clone https://github.com/yourusername/iota-hackathon.git
+   cd iota-hackathon
    ```
 
-2. Install JavaScript dependencies:
-   ```bash
+2. Install dependencies:
+   ```
    npm install
    ```
 
-3. Install Python dependencies:
-   ```bash
-   cd ai-model
-   pip install -r requirements.txt
-   cd ..
+3. Install Python dependencies (for AI model):
+   ```
+   pip install -r ai-model/requirements.txt
    ```
 
-4. Create necessary directories:
-   ```bash
-   mkdir -p reports
-   mkdir -p ai-model/models
+4. Configure environment:
+   ```
+   cp .env.example .env
+   ```
+   
+   Edit the `.env` file with your settings:
+   ```
+   # IOTA Network Configuration
+   IOTA_EVM_RPC_URL=http://localhost:8545
+   
+   # Contract Addresses (optional, demo works with mock data if not provided)
+   LENDING_POOL_ADDRESS=
+   ZK_VERIFIER_ADDRESS=
+   CROSS_CHAIN_LIQUIDITY_ADDRESS=
+   
+   # Demo Configuration
+   USE_MOCKS=true
    ```
 
-## Running the Demo
+### Running the Demo
 
-### Option 1: Full End-to-End Demo
+#### Demo CLI
 
-The end-to-end demo simulates the complete workflow of the IntelliLend platform, including contract deployment, user activities, AI risk assessment, cross-layer messaging, and liquidation scenarios.
+We've created an interactive CLI demo that showcases all the major features of IntelliLend:
 
-```bash
-# Start a local Hardhat node
-npx hardhat node
-
-# In a new terminal, run the demo script
-node scripts/fixed-demo.js
+```
+node scripts/demo.js
 ```
 
-### Option 2: Frontend Demo
+This interactive demo will walk you through:
+- AI-powered risk assessment
+- Privacy-preserving identity verification
+- Cross-chain liquidity management
+- Lending operations (deposit, borrow, repay, etc.)
+- Yield optimization strategies
 
-To see the dashboard interface without running the blockchain simulation:
+You can explore individual features or run a complete end-to-end scenario.
 
-```bash
-# Start the frontend
-npm run start:frontend
+#### Web Frontend
 
-# Access the dashboard at http://localhost:3000
+To run the web frontend:
+
+1. Start the backend server:
+   ```
+   npm run server
+   ```
+
+2. In a new terminal, start the frontend:
+   ```
+   npm run frontend
+   ```
+
+3. Open your browser and navigate to `http://localhost:3000`
+
+### Project Structure
+
+- `/smart-contracts` - Solidity and Move contracts
+  - `/evm` - IOTA EVM Layer 2 contracts (Solidity)
+  - `/move` - IOTA Layer 1 asset representation (Move)
+  - `/bridge` - Cross-layer bridge contracts
+- `/ai-model` - Machine learning models for risk assessment
+- `/backend` - API server and business logic
+- `/frontend` - React-based user interface
+- `/scripts` - Utility scripts and demos
+
+### Main Components
+
+1. **LendingPool.sol**: Main contract for the lending protocol on IOTA EVM
+2. **ZKVerifier.sol**: Contract to verify zero-knowledge proofs for privacy-preserving identity
+3. **CrossChainLiquidity.sol**: Manages liquidity across multiple chains
+4. **enhanced_asset.move**: Move implementation of secure asset representation
+5. **risk_model.py**: AI model for risk assessment and interest rate optimization
+
+### Running the Tests
+
+```
+npm test
 ```
 
-### Option 3: AI Model Demo
+### Deployment
 
-To test the AI risk assessment model independently:
+For testnet deployment:
 
-```bash
-# Start the AI model API
-cd ai-model
-python -m api.app
-
-# In a new terminal, test the API
-curl -X POST http://localhost:5000/assess-risk \
-  -H "Content-Type: application/json" \
-  -d '{"address":"0x1234","transaction_count":50,"wallet_age_days":100,"repayment_ratio":0.9,"default_count":0,"wallet_balance_volatility":0.1}'
+```
+npx hardhat run scripts/deploy.js --network iota-testnet
 ```
 
-## Key Demo Components
+### Additional Resources
 
-The demo showcases the following key features:
+- [IOTA Documentation](https://docs.iota.org/)
+- [IOTA EVM](https://evm.iota.org/)
+- [Move Programming Language](https://docs.iota.org/shimmer/smart-contracts/guide/move/getting_started)
+- [IOTA Identity Framework](https://wiki.iota.org/identity.rs/introduction)
 
-1. **Smart Contract Infrastructure**
-   - Lending pool operations (deposit, borrow, repay)
-   - Cross-layer communication between EVM and Move
-   - Privacy-preserving zero-knowledge proofs
+### Troubleshooting
 
-2. **AI Risk Assessment**
-   - Dynamic risk scoring based on on-chain activity
-   - Early warning signals for potential defaults
-   - Interest rate optimization
+- If you encounter issues with the demo, try enabling mock mode by setting `USE_MOCKS=true` in your `.env` file
+- For Python dependencies issues, consider using a virtual environment: `python -m venv venv && source venv/bin/activate`
+- Ensure you have the latest version of Node.js and npm installed
 
-3. **Cross-Chain Liquidity**
-   - Aggregating liquidity from multiple chains
-   - AI-driven yield optimization
-   - Automated rebalancing strategies
+### Team
 
-4. **Liquidation Protection**
-   - Risk-based liquidation thresholds
-   - Early warning system for at-risk positions
-   - AI-optimized liquidation parameters
+- Daniel Chen (Lead Developer)
+- Team members: [Add your team members here]
 
-## Troubleshooting
+---
 
-### Common Issues
-
-1. **Error: Cannot find module**
-   - Make sure you've run `npm install` in the root directory
-
-2. **Error: Cannot connect to Hardhat node**
-   - Ensure you're running a Hardhat node in a separate terminal with `npx hardhat node`
-
-3. **Python ModuleNotFoundError**
-   - Make sure you've installed all dependencies with `pip install -r requirements.txt`
-
-### Getting Help
-
-If you encounter any issues, please:
-
-1. Check the error logs in the terminal
-2. Refer to the documentation in the `docs` directory
-3. Create an issue on the GitHub repository
-
-## Next Steps
-
-After running the demo, explore the codebase to understand how the different components work together:
-
-- `smart-contracts/`: All Solidity and Move contracts
-- `ai-model/`: AI risk assessment models and API
-- `frontend/`: React-based user interface
-- `scripts/`: Demo and deployment scripts
-
-The comprehensive dashboard visualization provides a clear view of how the AI-powered risk assessment enhances the lending protocol's efficiency and security.
+Happy building with IOTA and AI! 🚀

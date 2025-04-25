@@ -1,25 +1,47 @@
 {
   "name": "intellilend",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "AI-Powered DeFi Lending Platform on IOTA",
-  "main": "index.js",
+  "main": "backend/server.js",
   "scripts": {
-    "setup": "node scripts/setup.js",
-    "deploy": "node scripts/deploy-contracts.js",
-    "start:backend": "cd backend && node server.js",
-    "start:ai": "cd ai-model/api && python app.py",
-    "start:frontend": "cd frontend && npm start",
-    "start": "concurrently \"npm run start:backend\" \"npm run start:ai\" \"npm run start:frontend\"",
-    "test": "npm run test:backend && npm run test:ai",
-    "test:backend": "cd backend && npm test",
-    "test:ai": "cd ai-model && python -m unittest discover tests",
-    "lint": "eslint \"**/*.js\"",
-    "bridge:test": "node scripts/test-cross-layer-bridge.js",
-    "docs": "cd docs && mkdocs serve"
+    "test": "npx hardhat test",
+    "server": "node backend/server.js",
+    "frontend": "cd frontend && npm start",
+    "demo": "node scripts/demo.js",
+    "deploy": "npx hardhat run scripts/deploy.js --network iota-testnet",
+    "start": "concurrently \"npm run server\" \"npm run frontend\"",
+    "install-all": "npm install && cd frontend && npm install",
+    "lint": "eslint . --ext .js,.jsx",
+    "build": "cd frontend && npm run build",
+    "ai-train": "cd ai-model && python train_model.py"
+  },
+  "dependencies": {
+    "@chainlink/contracts": "^0.5.1",
+    "@openzeppelin/contracts": "^4.8.0",
+    "axios": "^1.2.2",
+    "chalk": "^4.1.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.3",
+    "ethers": "^5.7.2",
+    "express": "^4.18.2",
+    "figlet": "^1.8.1",
+    "inquirer": "^8.2.6",
+    "jsonwebtoken": "^9.0.0",
+    "mongoose": "^6.8.3"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^2.0.1",
+    "@nomiclabs/hardhat-ethers": "^2.2.2",
+    "@nomiclabs/hardhat-waffle": "^2.0.3",
+    "chai": "^4.3.7",
+    "concurrently": "^7.6.0",
+    "eslint": "^8.32.0",
+    "hardhat": "^2.12.6",
+    "nodemon": "^2.0.20"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/yourusername/intellilend.git"
+    "url": "git+https://github.com/yourusername/iota-hackathon.git"
   },
   "keywords": [
     "iota",
@@ -27,30 +49,13 @@
     "ai",
     "lending",
     "blockchain",
-    "smart-contracts",
     "move",
     "evm"
   ],
-  "author": "Your Name",
+  "author": "Your Team",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/yourusername/intellilend/issues"
+    "url": "https://github.com/yourusername/iota-hackathon/issues"
   },
-  "homepage": "https://github.com/yourusername/intellilend#readme",
-  "dependencies": {
-    "axios": "^1.3.5",
-    "body-parser": "^1.20.2",
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
-    "ethers": "^5.7.2",
-    "express": "^4.18.2"
-  },
-  "devDependencies": {
-    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
-    "concurrently": "^8.0.1",
-    "eslint": "^8.38.0",
-    "hardhat": "^2.23.0",
-    "jest": "^29.5.0",
-    "nodemon": "^3.0.1"
-  }
+  "homepage": "https://github.com/yourusername/iota-hackathon#readme"
 }

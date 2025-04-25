@@ -1,528 +1,719 @@
 /**
- * AI Helper Functions for IntelliLend
+ * IntelliLend AI Helper
  * 
- * This module provides interfaces to connect the IntelliLend platform with
- * the AI risk assessment model. It handles data preprocessing, model inference,
- * and result formatting.
+ * A client-side JavaScript library for interacting with the IntelliLend AI risk assessment model.
+ * This library provides methods to fetch and process on-chain data, make predictions, 
+ * and visualize risk factors in the frontend.
  */
 
-const tf = require('@tensorflow/tfjs-node');
-const { spawn } = require('child_process');
-const fs = require('fs');
-const path = require('path');
-const axios = require('axios');
+class IntelliLendAI {
+  constructor(options = {}) {
+    this.apiUrl = options.apiUrl || '/api';
+    this.cache = new Map();
+    this.cacheExpiry = options.cacheExpiry || 5 * 60 * 1000; // 5 minutes default
+    this.onChainDataProviders = options.onChainDataProviders || [];
+    this.features = this.getFeatureDefinitions();
+    this.explanationComponents = [];
+  }
 
-// Configuration
-const config = {
-    // AI model paths
-    riskClassifierPath: path.join(__dirname, './models/risk_classifier.joblib'),
-    defaultPredictorPath: path.join(__dirname, './models/default_predictor.joblib'),
-    interestOptimizerPath: path.join(__dirname, './models/interest_optimizer'),
-    
-    // API endpoint (if running as a service)
-    apiEndpoint: process.env.AI_ENDPOINT || 'http://localhost:5000',
-    
-    // Feature list
-    features: [
-        'transaction_count',
-        'avg_transaction_value',
-        'max_transaction_value',
-        'min_transaction_value',
-        'transaction_frequency',
-        'transaction_regularity',
-        'transaction_growth_rate',
-        'incoming_tx_ratio',
-        'wallet_age_days',
-        'wallet_balance',
-        'wallet_balance_volatility',
-        'balance_utilization_ratio',
-        'address_entropy',
-        'previous_loans_count',
-        'repayment_ratio',
-        'default_count',
-        'avg_loan_duration',
-        'max_loan_amount',
-        'early_repayment_frequency',
-        'late_payment_frequency',
-        'collateral_diversity',
-        'collateral_value_ratio',
-        'collateral_quality_score',
-        'collateral_volatility',
-        'network_centrality',
-        'unique_counterparties',
-        'trusted_counterparties_ratio',
-        'counterparty_risk_exposure',
-        'cross_chain_activity',
-        'defi_protocol_diversity',
-        'lending_protocol_interactions',
-        'staking_history_score',
-        'governance_participation',
-        'market_volatility_correlation',
-        'token_price_correlation',
-        'liquidation_risk_score',
-        'identity_verification_level',
-        'security_score',
-        'social_trust_score'
-    ],
-    
-    // Default values for missing features
-    defaultValues: {
-        'transaction_count': 0,
-        'avg_transaction_value': 0,
-        'max_transaction_value': 0,
-        'min_transaction_value': 0,
-        'transaction_frequency': 0,
-        'transaction_regularity': 0.5,
-        'transaction_growth_rate': 0,
-        'incoming_tx_ratio': 0.5,
-        'wallet_balance': 0,
-        'wallet_balance_volatility': 0.5,
-        'balance_utilization_ratio': 0.5,
-        'address_entropy': 0.5,
-        'avg_loan_duration': 30,
-        'max_loan_amount': 0,
-        'early_repayment_frequency': 0,
-        'late_payment_frequency': 0,
-        'collateral_quality_score': 'B',
-        'collateral_volatility': 0.5,
-        'network_centrality': 0.5,
-        'unique_counterparties': 0,
-        'trusted_counterparties_ratio': 0.5,
-        'counterparty_risk_exposure': 0.5,
-        'defi_protocol_diversity': 0,
-        'staking_history_score': 50,
-        'governance_participation': 0,
-        'market_volatility_correlation': 0.5,
-        'token_price_correlation': 0,
-        'liquidation_risk_score': 50,
-        'identity_verification_level': 'basic',
-        'security_score': 50,
-        'social_trust_score': 50
-    }
-};
+  /**
+   * Get all feature definitions used by the model
+   */
+  getFeatureDefinitions() {
+    // List of all features used by the model with metadata
+    return {
+      // Transaction history features
+      transaction_count: {
+        name: 'Transaction Count',
+        description: 'Number of transactions in the wallet history',
+        category: 'Transaction History',
+        importance: 'medium',
+        improvable: true,
+        improvementTip: 'Regular activity shows stability, but avoid unusual spikes'
+      },
+      avg_transaction_value: {
+        name: 'Average Transaction Value',
+        description: 'Average value of transactions',
+        category: 'Transaction History',
+        importance: 'medium',
+        improvable: false
+      },
+      transaction_frequency: {
+        name: 'Transaction Frequency',
+        description: 'How often transactions are made',
+        category: 'Transaction History',
+        importance: 'medium',
+        improvable: true,
+        improvementTip: 'Regular, consistent transaction patterns are favorable'
+      },
+      
+      // Wallet characteristics
+      wallet_age_days: {
+        name: 'Wallet Age',
+        description: 'Age of the wallet in days',
+        category: 'Wallet Profile',
+        importance: 'high',
+        improvable: false
+      },
+      wallet_balance: {
+        name: 'Wallet Balance',
+        description: 'Current balance in the wallet',
+        category: 'Wallet Profile',
+        importance: 'high',
+        improvable: true,
+        improvementTip: 'Maintaining higher balances improves creditworthiness'
+      },
+      wallet_balance_volatility: {
+        name: 'Balance Volatility',
+        description: 'How much the wallet balance fluctuates',
+        category: 'Wallet Profile',
+        importance: 'high',
+        improvable: true,
+        improvementTip: 'More stable balances indicate financial stability'
+      },
+      
+      // Lending history
+      previous_loans_count: {
+        name: 'Previous Loans',
+        description: 'Number of previous loans taken',
+        category: 'Lending History',
+        importance: 'high',
+        improvable: false
+      },
+      repayment_ratio: {
+        name: 'Repayment Ratio',
+        description: 'Ratio of loans repaid to loans taken',
+        category: 'Lending History',
+        importance: 'critical',
+        improvable: true,
+        improvementTip: 'Always repay loans on time to maintain a high ratio'
+      },
+      default_count: {
+        name: 'Default Count',
+        description: 'Number of times defaulted on loans',
+        category: 'Lending History',
+        importance: 'critical',
+        improvable: false
+      },
+      
+      // Collateral behavior
+      collateral_diversity: {
+        name: 'Collateral Diversity',
+        description: 'Variety of assets used as collateral',
+        category: 'Collateral',
+        importance: 'high',
+        improvable: true,
+        improvementTip: 'Diversify your collateral across different asset types'
+      },
+      collateral_value_ratio: {
+        name: 'Collateral to Loan Ratio',
+        description: 'Value of collateral relative to loan amount',
+        category: 'Collateral',
+        importance: 'critical',
+        improvable: true,
+        improvementTip: 'Higher collateral ratios reduce risk and may lower interest rates'
+      },
+      
+      // Cross-chain and protocol activity
+      cross_chain_activity: {
+        name: 'Cross-chain Activity',
+        description: 'Activity across multiple blockchains',
+        category: 'Network Activity',
+        importance: 'low',
+        improvable: false
+      },
+      lending_protocol_interactions: {
+        name: 'DeFi Lending Interactions',
+        description: 'Interactions with other DeFi lending protocols',
+        category: 'Network Activity',
+        importance: 'medium',
+        improvable: true,
+        improvementTip: 'Positive history with other lending protocols is beneficial'
+      },
+      
+      // Market condition features
+      market_volatility_correlation: {
+        name: 'Market Volatility Correlation',
+        description: 'How wallet activity correlates with market volatility',
+        category: 'Market Behavior',
+        importance: 'medium',
+        improvable: true,
+        improvementTip: 'Avoid large withdrawals during market downturns'
+      },
+      
+      // Security and identity features
+      identity_verification_level: {
+        name: 'Identity Verification Level',
+        description: 'Level of identity verification completed',
+        category: 'Identity',
+        importance: 'high',
+        improvable: true,
+        improvementTip: 'Complete higher levels of verification to reduce risk'
+      }
+    };
+  }
 
-/**
- * Load the AI risk model if not running as a service
- */
-async function loadModels() {
-    console.log('Loading AI models...');
-    
+  /**
+   * Predict risk score for a wallet address
+   * 
+   * @param {string} address - Wallet address
+   * @param {Object} options - Additional options for the prediction
+   * @returns {Promise<Object>} Risk assessment results
+   */
+  async predictRisk(address, options = {}) {
     try {
-        // In a real implementation, we would load the models here
-        // For the hackathon demo, we'll use simplified models
-        
-        const riskClassifierModel = {
-            predict: (features) => {
-                // Simplified risk classification model
-                // Returns a risk category (0: Low, 1: Medium, 2: High, 3: Very High)
-                const score = calculateRiskScore(features);
-                if (score < 25) return 0;
-                if (score < 50) return 1;
-                if (score < 75) return 2;
-                return 3;
-            }
-        };
-        
-        const defaultPredictorModel = {
-            predict: (features) => {
-                // Simplified default probability model
-                // Returns a probability between 0 and 1
-                const defaultRatio = features.default_count / (features.previous_loans_count + 1);
-                const repaymentFactor = features.repayment_ratio * 2;
-                
-                return Math.min(1, Math.max(0, 
-                    defaultRatio * 0.5 - repaymentFactor * 0.3 + 
-                    features.wallet_balance_volatility * 0.2 +
-                    features.late_payment_frequency * 0.3
-                ));
-            }
-        };
-        
-        const interestOptimizerModel = {
-            predict: (features, marketConditions) => {
-                // Simplified interest rate optimization model
-                // Returns an optimal interest rate based on risk and market conditions
-                const riskCategory = riskClassifierModel.predict(features);
-                const defaultProb = defaultPredictorModel.predict(features);
-                
-                // Base rates for different risk categories
-                const baseRates = [0.03, 0.06, 0.09, 0.15];
-                let rate = baseRates[riskCategory];
-                
-                // Add market conditions adjustment
-                if (marketConditions) {
-                    rate += marketConditions.volatility * 0.1;
-                    rate -= marketConditions.liquidityRatio * 0.05;
-                }
-                
-                // Add default probability adjustment
-                rate += defaultProb * 0.1;
-                
-                return Math.min(0.25, Math.max(0.01, rate));
-            }
-        };
-        
-        return {
-            riskClassifier: riskClassifierModel,
-            defaultPredictor: defaultPredictorModel,
-            interestOptimizer: interestOptimizerModel
-        };
-    } catch (error) {
-        console.error('Error loading models:', error);
-        throw error;
-    }
-}
-
-// Global models variable
-let models = null;
-
-/**
- * Preprocess user data to prepare for model input
- */
-function preprocessUserData(userData) {
-    const processedData = {};
-    
-    // Copy existing fields
-    for (const key in userData) {
-        processedData[key] = userData[key];
-    }
-    
-    // Fill in missing features with default values
-    for (const feature of config.features) {
-        if (!(feature in processedData) && feature in config.defaultValues) {
-            processedData[feature] = config.defaultValues[feature];
+      // Check cache first
+      const cacheKey = `risk_${address}`;
+      if (this.cache.has(cacheKey) && !options.forceRefresh) {
+        const cached = this.cache.get(cacheKey);
+        if (Date.now() - cached.timestamp < this.cacheExpiry) {
+          return cached.data;
         }
+      }
+
+      // Collect on-chain data
+      const onChainData = await this.collectOnChainData(address);
+      
+      // Call API
+      const response = await fetch(`${this.apiUrl}/risk-assessment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          address,
+          onChainData,
+          options
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      
+      // Cache the result
+      this.cache.set(cacheKey, {
+        data: result,
+        timestamp: Date.now()
+      });
+      
+      return result;
+    } catch (error) {
+      console.error('Error predicting risk:', error);
+      throw error;
     }
+  }
+
+  /**
+   * Get personalized recommendations for improving risk score
+   * 
+   * @param {string} address - Wallet address
+   * @returns {Promise<Array>} List of recommendations
+   */
+  async getRecommendations(address) {
+    try {
+      const response = await fetch(`${this.apiUrl}/recommendations/${address}`);
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error getting recommendations:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Collect on-chain data from multiple sources
+   * 
+   * @param {string} address - Wallet address
+   * @returns {Promise<Object>} Collected features
+   */
+  async collectOnChainData(address) {
+    // Combine data from all providers
+    const features = {};
     
-    // Calculate derived features
-    processedData.default_risk_ratio = processedData.default_count / (processedData.previous_loans_count + 1);
-    processedData.late_payment_risk = processedData.late_payment_frequency / (processedData.previous_loans_count + 1);
-    
-    processedData.lending_engagement = (
-        processedData.transaction_count * processedData.lending_protocol_interactions / 
-        (processedData.wallet_age_days + 1)
+    // Run all data providers in parallel
+    const promises = this.onChainDataProviders.map(provider => 
+      provider.getFeatures(address).catch(err => {
+        console.warn(`Error from data provider ${provider.name}:`, err);
+        return {}; // Return empty object if a provider fails
+      })
     );
     
-    // Handle categorical features
-    if (typeof processedData.identity_verification_level === 'string') {
-        const levelMap = {
-            'none': 0,
-            'basic': 1,
-            'advanced': 2,
-            'full': 3
-        };
-        processedData.identity_verification_level_encoded = 
-            levelMap[processedData.identity_verification_level] || 0;
-    }
+    const results = await Promise.all(promises);
     
-    if (typeof processedData.collateral_quality_score === 'string') {
-        const scoreMap = {
-            'A': 4,
-            'B': 3,
-            'C': 2,
-            'D': 1
-        };
-        processedData.collateral_quality_score_encoded = 
-            scoreMap[processedData.collateral_quality_score] || 2;
-    }
+    // Merge all results
+    results.forEach(result => {
+      Object.assign(features, result);
+    });
     
-    return processedData;
-}
+    return features;
+  }
 
-/**
- * Calculate a simplified risk score
- */
-function calculateRiskScore(userData) {
-    // Simple weighted average of key risk factors
-    const weights = {
-        default_count: 20,
-        repayment_ratio: -30,
-        late_payment_frequency: 15,
-        wallet_balance_volatility: 10,
-        transaction_count: -5,
-        lending_protocol_interactions: -5,
-        collateral_diversity: -5,
-        wallet_age_days: -5,
-        cross_chain_activity: -5
+  /**
+   * Register a new data provider
+   * 
+   * @param {Object} provider - On-chain data provider
+   */
+  registerDataProvider(provider) {
+    if (typeof provider.getFeatures !== 'function') {
+      throw new Error('Data provider must implement getFeatures() method');
+    }
+    this.onChainDataProviders.push(provider);
+  }
+
+  /**
+   * Generate a risk explanation component
+   * 
+   * @param {Object} riskData - Risk assessment data
+   * @param {string} targetElement - ID of the target HTML element
+   * @returns {Object} Component controller
+   */
+  createRiskExplanation(riskData, targetElement) {
+    const container = document.getElementById(targetElement);
+    if (!container) {
+      throw new Error(`Target element not found: ${targetElement}`);
+    }
+    
+    // Create explanation component
+    const component = {
+      riskData,
+      targetElement,
+      container,
+      charts: [],
+      
+      render() {
+        // Clear container
+        container.innerHTML = '';
+        
+        // Create main structure
+        const header = document.createElement('div');
+        header.className = 'risk-explanation-header';
+        
+        const title = document.createElement('h3');
+        title.textContent = 'Risk Assessment Explanation';
+        header.appendChild(title);
+        
+        const score = document.createElement('div');
+        score.className = 'risk-score';
+        score.innerHTML = `<span class="score-value">${riskData.riskScore}</span><span class="score-label">${riskData.riskCategory}</span>`;
+        header.appendChild(score);
+        
+        container.appendChild(header);
+        
+        // Create factors section
+        const factorsSection = document.createElement('div');
+        factorsSection.className = 'risk-factors-section';
+        
+        const factorsTitle = document.createElement('h4');
+        factorsTitle.textContent = 'Top Risk Factors';
+        factorsSection.appendChild(factorsTitle);
+        
+        const factorsList = document.createElement('ul');
+        factorsList.className = 'factors-list';
+        
+        riskData.topFactors.forEach(factor => {
+          const featureInfo = this.features[factor.Feature] || {
+            name: factor.Feature,
+            description: 'Feature importance',
+            category: 'Other',
+            importance: 'medium',
+            improvable: false
+          };
+          
+          const factorItem = document.createElement('li');
+          factorItem.className = `factor-item importance-${featureInfo.importance}${featureInfo.improvable ? ' improvable' : ''}`;
+          
+          factorItem.innerHTML = `
+            <span class="factor-name">${featureInfo.name}</span>
+            <div class="factor-bar-container">
+              <div class="factor-bar" style="width: ${factor.Importance * 100}%"></div>
+            </div>
+            <span class="factor-value">${(factor.Importance * 100).toFixed(1)}%</span>
+            <div class="factor-description">${featureInfo.description}</div>
+            ${featureInfo.improvable ? `<div class="improvement-tip">${featureInfo.improvementTip}</div>` : ''}
+          `;
+          
+          factorsList.appendChild(factorItem);
+        });
+        
+        factorsSection.appendChild(factorsList);
+        container.appendChild(factorsSection);
+        
+        // Create recommendations section
+        const recsSection = document.createElement('div');
+        recsSection.className = 'recommendations-section';
+        
+        const recsTitle = document.createElement('h4');
+        recsTitle.textContent = 'Personalized Recommendations';
+        recsSection.appendChild(recsTitle);
+        
+        const recsList = document.createElement('div');
+        recsList.className = 'recommendations-list';
+        
+        riskData.recommendations.forEach(rec => {
+          const recItem = document.createElement('div');
+          recItem.className = `recommendation-item impact-${rec.impact}`;
+          
+          recItem.innerHTML = `
+            <h5 class="rec-title">${rec.title}</h5>
+            <p class="rec-description">${rec.description}</p>
+            <span class="impact-badge">${rec.impact} impact</span>
+          `;
+          
+          recsList.appendChild(recItem);
+        });
+        
+        recsSection.appendChild(recsList);
+        container.appendChild(recsSection);
+        
+        return this;
+      },
+      
+      addHistoricalChart(historyData) {
+        const chartContainer = document.createElement('div');
+        chartContainer.className = 'risk-history-chart';
+        container.appendChild(chartContainer);
+        
+        // Here you would use a charting library like Chart.js
+        // This is a placeholder for the actual chart creation
+        chartContainer.innerHTML = '<p>Historical risk score chart would be rendered here</p>';
+        
+        return this;
+      },
+      
+      update(newRiskData) {
+        this.riskData = newRiskData;
+        return this.render();
+      }
     };
     
-    let score = 50; // Base score
-    let totalWeight = 0;
+    // Store the component
+    this.explanationComponents.push(component);
     
-    for (const [feature, weight] of Object.entries(weights)) {
-        if (feature in userData) {
-            let value = userData[feature];
-            
-            // Normalize values
-            if (feature === 'repayment_ratio') {
-                value = value * 100; // Convert to percentage
-            } else if (feature === 'wallet_age_days') {
-                value = Math.min(value, 1000) / 10; // Cap at 1000 days, scale down
-            } else if (feature === 'transaction_count') {
-                value = Math.min(value, 100); // Cap at 100 transactions
-            }
-            
-            score += value * weight / 100;
-            totalWeight += Math.abs(weight);
-        }
+    // Render initially
+    component.render();
+    
+    return component;
+  }
+
+  /**
+   * Create a real-time risk monitoring dashboard
+   * 
+   * @param {string} address - Wallet address to monitor
+   * @param {string} targetElement - ID of the target HTML element
+   * @param {Object} options - Dashboard options
+   * @returns {Object} Dashboard controller
+   */
+  createMonitoringDashboard(address, targetElement, options = {}) {
+    const container = document.getElementById(targetElement);
+    if (!container) {
+      throw new Error(`Target element not found: ${targetElement}`);
     }
     
-    // Ensure score is between 0 and 100
-    return Math.min(100, Math.max(0, score));
-}
+    const refreshInterval = options.refreshInterval || 60000; // 1 minute default
+    
+    // Create dashboard controller
+    const dashboard = {
+      address,
+      container,
+      options,
+      timerId: null,
+      latestData: null,
+      
+      async initialize() {
+        // Initial data fetch
+        try {
+          this.latestData = await this.refreshData();
+          this.render();
+          
+          // Set up periodic refresh
+          this.timerId = setInterval(() => {
+            this.refreshData().then(data => {
+              this.latestData = data;
+              this.render();
+            }).catch(console.error);
+          }, refreshInterval);
+        } catch (error) {
+          console.error('Error initializing dashboard:', error);
+          container.innerHTML = `<div class="error-message">Error loading risk data: ${error.message}</div>`;
+        }
+        
+        return this;
+      },
+      
+      async refreshData() {
+        const riskData = await this.predictRisk(address, { forceRefresh: true });
+        return riskData;
+      },
+      
+      render() {
+        if (!this.latestData) return this;
+        
+        // Clear container
+        container.innerHTML = '';
+        
+        // Create dashboard structure
+        const header = document.createElement('div');
+        header.className = 'dashboard-header';
+        
+        header.innerHTML = `
+          <h2>Risk Monitoring Dashboard</h2>
+          <div class="address-display">${address}</div>
+          <div class="last-updated">Last updated: ${new Date().toLocaleString()}</div>
+        `;
+        
+        container.appendChild(header);
+        
+        // Add risk score gauge
+        const gaugeSection = document.createElement('div');
+        gaugeSection.className = 'risk-gauge-section';
+        
+        // This would typically use a gauge visualization library
+        gaugeSection.innerHTML = `
+          <div class="risk-gauge">
+            <svg viewBox="0 0 100 50">
+              <path d="M10,50 A40,40 0 0,1 90,50" stroke="#eee" stroke-width="5" fill="none" />
+              <path d="M10,50 A40,40 0 0,1 ${10 + 80 * (this.latestData.riskScore / 100)},${50 - Math.sin(Math.PI * (this.latestData.riskScore / 100)) * 40}" stroke="${this.getRiskColor(this.latestData.riskScore)}" stroke-width="5" fill="none" />
+              <text x="50" y="30" text-anchor="middle" font-size="12">${this.latestData.riskScore}</text>
+              <text x="50" y="45" text-anchor="middle" font-size="8">${this.latestData.riskCategory}</text>
+            </svg>
+          </div>
+        `;
+        
+        container.appendChild(gaugeSection);
+        
+        // Add key metrics
+        const metricsSection = document.createElement('div');
+        metricsSection.className = 'key-metrics-section';
+        
+        metricsSection.innerHTML = `
+          <h3>Key Risk Metrics</h3>
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="metric-title">Interest Rate</div>
+              <div class="metric-value">${this.latestData.interestRate || 'N/A'}%</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-title">Health Factor</div>
+              <div class="metric-value">${this.latestData.healthFactor?.toFixed(2) || 'N/A'}</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-title">Collateral Ratio</div>
+              <div class="metric-value">${this.latestData.collateralRatio?.toFixed(2) || 'N/A'}</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-title">Max Borrow Power</div>
+              <div class="metric-value">${this.latestData.maxBorrowPower?.toFixed(2) || 'N/A'} IOTA</div>
+            </div>
+          </div>
+        `;
+        
+        container.appendChild(metricsSection);
+        
+        // Add early warning indicators if any
+        if (this.latestData.warnings && this.latestData.warnings.length > 0) {
+          const warningsSection = document.createElement('div');
+          warningsSection.className = 'warnings-section';
+          
+          const warningsList = document.createElement('ul');
+          warningsList.className = 'warnings-list';
+          
+          this.latestData.warnings.forEach(warning => {
+            const warningItem = document.createElement('li');
+            warningItem.className = `warning-item severity-${warning.severity}`;
+            warningItem.textContent = warning.description;
+            warningsList.appendChild(warningItem);
+          });
+          
+          warningsSection.appendChild(warningsList);
+          container.appendChild(warningsSection);
+        }
+        
+        return this;
+      },
+      
+      getRiskColor(score) {
+        if (score < 30) return '#4CAF50'; // Green
+        if (score < 60) return '#FFC107'; // Yellow/Orange
+        return '#F44336'; // Red
+      },
+      
+      dispose() {
+        if (this.timerId) {
+          clearInterval(this.timerId);
+          this.timerId = null;
+        }
+      }
+    };
+    
+    // Bind methods to dashboard object
+    dashboard.refreshData = this.predictRisk.bind(this);
+    
+    // Initialize and return
+    return dashboard.initialize();
+  }
 
-/**
- * Assess risk for a user based on their on-chain activity
- * 
- * @param {Object} userData User transaction and wallet data
- * @returns {Number} Risk score (0-100, higher means higher risk)
- */
-async function assessRisk(userData) {
-    try {
-        // Check if we're using the API
-        if (process.env.USE_API === 'true' && config.apiEndpoint) {
-            const response = await axios.post(`${config.apiEndpoint}/assess-risk`, userData);
-            return response.data.riskScore;
-        }
-        
-        // Load models if not already loaded
-        if (!models) {
-            models = await loadModels();
-        }
-        
-        // Preprocess data
-        const processedData = preprocessUserData(userData);
-        
-        // Run the simplified risk calculation
-        const riskScore = calculateRiskScore(processedData);
-        
-        return Math.round(riskScore);
-    } catch (error) {
-        console.error('Error assessing risk:', error);
-        // Fallback to a simplified calculation
-        return calculateRiskScore(userData);
+  /**
+   * Process on-chain transaction data to extract features
+   * 
+   * @param {Array} transactions - List of transactions
+   * @returns {Object} Extracted features
+   */
+  processTransactionData(transactions) {
+    if (!Array.isArray(transactions) || transactions.length === 0) {
+      return {};
     }
-}
-
-/**
- * Predict the probability of default for a user
- * 
- * @param {Object} userData User transaction and wallet data
- * @returns {Number} Default probability (0-1)
- */
-async function predictDefaultProbability(userData) {
-    try {
-        // Check if we're using the API
-        if (process.env.USE_API === 'true' && config.apiEndpoint) {
-            const response = await axios.post(`${config.apiEndpoint}/predict-default`, userData);
-            return response.data.defaultProbability;
+    
+    // Sort transactions by timestamp
+    const sortedTx = [...transactions].sort((a, b) => a.timestamp - b.timestamp);
+    
+    // Calculate basic statistics
+    const values = sortedTx.map(tx => parseFloat(tx.value) || 0);
+    const count = transactions.length;
+    const totalValue = values.reduce((sum, val) => sum + val, 0);
+    const avgValue = totalValue / count;
+    const maxValue = Math.max(...values);
+    const minValue = Math.min(...values);
+    
+    // Calculate transaction frequency (transactions per day)
+    const firstTx = sortedTx[0];
+    const lastTx = sortedTx[sortedTx.length - 1];
+    const daysDiff = (lastTx.timestamp - firstTx.timestamp) / (24 * 60 * 60 * 1000);
+    const frequency = daysDiff > 0 ? count / daysDiff : 0;
+    
+    // Calculate incoming/outgoing ratio
+    const incomingTx = sortedTx.filter(tx => tx.direction === 'in').length;
+    const incomingRatio = count > 0 ? incomingTx / count : 0;
+    
+    // Calculate growth rate
+    const growthPeriods = Math.min(5, Math.floor(count / 10)); // Use up to 5 periods
+    const periodSize = Math.floor(count / growthPeriods);
+    
+    let growthRate = 0;
+    if (growthPeriods > 1) {
+      const periodTotals = [];
+      for (let i = 0; i < growthPeriods; i++) {
+        const start = i * periodSize;
+        const end = (i + 1) * periodSize;
+        const periodValue = sortedTx.slice(start, end).reduce((sum, tx) => sum + (parseFloat(tx.value) || 0), 0);
+        periodTotals.push(periodValue);
+      }
+      
+      // Calculate average growth between periods
+      let totalGrowth = 0;
+      for (let i = 1; i < periodTotals.length; i++) {
+        const prevPeriod = periodTotals[i - 1];
+        const currentPeriod = periodTotals[i];
+        if (prevPeriod > 0) {
+          totalGrowth += (currentPeriod - prevPeriod) / prevPeriod;
         }
-        
-        // Load models if not already loaded
-        if (!models) {
-            models = await loadModels();
-        }
-        
-        // Preprocess data
-        const processedData = preprocessUserData(userData);
-        
-        // Predict default probability
-        const defaultProb = models.defaultPredictor.predict(processedData);
-        
-        return defaultProb;
-    } catch (error) {
-        console.error('Error predicting default probability:', error);
-        // Fallback calculation
-        const defaultRatio = userData.default_count / (userData.previous_loans_count + 1);
-        const repaymentFactor = userData.repayment_ratio || 0.8;
-        
-        return Math.min(1, Math.max(0, defaultRatio * 0.5 - repaymentFactor * 0.3 + 0.1));
+      }
+      growthRate = totalGrowth / (periodTotals.length - 1);
     }
-}
-
-/**
- * Optimize interest rate for a user based on their risk profile and market conditions
- * 
- * @param {Object} userData User transaction and wallet data
- * @param {Object} marketConditions Current market conditions
- * @returns {Number} Optimized interest rate (0-1)
- */
-async function optimizeInterestRate(userData, marketConditions) {
-    try {
-        // Check if we're using the API
-        if (process.env.USE_API === 'true' && config.apiEndpoint) {
-            const response = await axios.post(
-                `${config.apiEndpoint}/optimize-rate`, 
-                { userData, marketConditions }
-            );
-            return response.data.interestRate;
-        }
-        
-        // Load models if not already loaded
-        if (!models) {
-            models = await loadModels();
-        }
-        
-        // Preprocess data
-        const processedData = preprocessUserData(userData);
-        
-        // Optimize interest rate
-        const rate = models.interestOptimizer.predict(processedData, marketConditions);
-        
-        return rate;
-    } catch (error) {
-        console.error('Error optimizing interest rate:', error);
-        // Fallback calculation
-        const riskScore = await assessRisk(userData);
-        const baseRate = 0.03;
-        const riskPremium = riskScore / 100 * 0.2;
-        
-        let marketAdjustment = 0;
-        if (marketConditions) {
-            marketAdjustment = (marketConditions.volatility || 0) * 0.1 - 
-                               (marketConditions.liquidityRatio || 0.5) * 0.05;
-        }
-        
-        return Math.min(0.25, Math.max(0.01, baseRate + riskPremium + marketAdjustment));
+    
+    // Calculate regularity
+    // This is a measure of how consistent the time between transactions is
+    const timeDiffs = [];
+    for (let i = 1; i < sortedTx.length; i++) {
+      timeDiffs.push(sortedTx[i].timestamp - sortedTx[i - 1].timestamp);
     }
-}
-
-/**
- * Generate early warning signals for potential defaults
- * 
- * @param {Object} userData User transaction and wallet data
- * @returns {Object} Warning signals and their severity
- */
-async function generateEarlyWarningSignals(userData) {
-    try {
-        // Check if we're using the API
-        if (process.env.USE_API === 'true' && config.apiEndpoint) {
-            const response = await axios.post(`${config.apiEndpoint}/warning-signals`, userData);
-            return response.data.warnings;
-        }
-        
-        const warnings = {};
-        
-        // Preprocess data
-        const processedData = preprocessUserData(userData);
-        
-        // Check for high default probability
-        const defaultProb = await predictDefaultProbability(userData);
-        if (defaultProb > 0.3) {
-            warnings.high_default_probability = {
-                severity: defaultProb > 0.5 ? 'high' : 'medium',
-                value: defaultProb,
-                threshold: 0.3,
-                description: 'User has a high probability of default based on historical behavior'
-            };
-        }
-        
-        // Check for low repayment ratio
-        if (processedData.repayment_ratio < 0.8) {
-            warnings.low_repayment_ratio = {
-                severity: processedData.repayment_ratio < 0.6 ? 'high' : 'medium',
-                value: processedData.repayment_ratio,
-                threshold: 0.8,
-                description: 'User has a history of incomplete loan repayments'
-            };
-        }
-        
-        // Check for high wallet balance volatility
-        if (processedData.wallet_balance_volatility > 0.4) {
-            warnings.high_wallet_volatility = {
-                severity: processedData.wallet_balance_volatility > 0.6 ? 'high' : 'medium',
-                value: processedData.wallet_balance_volatility,
-                threshold: 0.4,
-                description: 'User has unusually volatile wallet balance'
-            };
-        }
-        
-        // Check for high late payment frequency
-        if (processedData.late_payment_frequency > 0.2) {
-            warnings.frequent_late_payments = {
-                severity: 'medium',
-                value: processedData.late_payment_frequency,
-                threshold: 0.2,
-                description: 'User frequently makes late payments'
-            };
-        }
-        
-        // Check for low collateral diversity
-        if (processedData.collateral_diversity < 2) {
-            warnings.low_collateral_diversity = {
-                severity: 'low',
-                value: processedData.collateral_diversity,
-                threshold: 2,
-                description: 'User has limited collateral diversity, increasing concentration risk'
-            };
-        }
-        
-        return warnings;
-    } catch (error) {
-        console.error('Error generating warning signals:', error);
-        return {};
+    
+    let regularity = 0;
+    if (timeDiffs.length > 0) {
+      const avgTimeDiff = timeDiffs.reduce((sum, diff) => sum + diff, 0) / timeDiffs.length;
+      const variance = timeDiffs.reduce((sum, diff) => sum + Math.pow(diff - avgTimeDiff, 2), 0) / timeDiffs.length;
+      const stdDev = Math.sqrt(variance);
+      
+      // Normalize: higher values mean more regular (consistent) transaction timing
+      regularity = avgTimeDiff > 0 ? 1 - Math.min(1, stdDev / avgTimeDiff) : 0;
     }
-}
+    
+    return {
+      transaction_count: count,
+      avg_transaction_value: avgValue,
+      max_transaction_value: maxValue,
+      min_transaction_value: minValue,
+      transaction_frequency: frequency,
+      transaction_regularity: regularity,
+      transaction_growth_rate: growthRate,
+      incoming_tx_ratio: incomingRatio
+    };
+  }
 
-/**
- * Predict future user behavior based on historical data
- * 
- * @param {Object} userData User transaction and wallet data
- * @param {Number} daysAhead Number of days to predict ahead
- * @returns {Object} Predictions for key metrics
- */
-async function predictFutureBehavior(userData, daysAhead = 30) {
-    try {
-        // Check if we're using the API
-        if (process.env.USE_API === 'true' && config.apiEndpoint) {
-            const response = await axios.post(
-                `${config.apiEndpoint}/predict-behavior`, 
-                { userData, daysAhead }
-            );
-            return response.data.predictions;
-        }
-        
-        // Simple trend-based predictions
-        const predictions = {};
-        
-        // Predict repayment trend
-        const repaymentRatio = userData.repayment_ratio || 0.8;
-        const repaymentTrend = Math.random() > 0.7 ? -0.05 : 0.02; // Mostly improving
-        predictions.repayment_ratio = {
-            current: repaymentRatio,
-            predicted: Math.min(1, Math.max(0, repaymentRatio + repaymentTrend)),
-            trend: repaymentTrend > 0 ? 'improving' : 'declining'
-        };
-        
-        // Predict wallet volatility
-        const volatility = userData.wallet_balance_volatility || 0.3;
-        const volatilityTrend = Math.random() > 0.6 ? 0.1 : -0.05; // Slightly more volatile
-        predictions.wallet_volatility = {
-            current: volatility,
-            predicted: Math.min(1, Math.max(0, volatility + volatilityTrend)),
-            trend: volatilityTrend > 0 ? 'increasing' : 'decreasing'
-        };
-        
-        // Predict borrowing activity
-        const borrowRatio = userData.borrows / (userData.wallet_balance || 1);
-        const borrowTrend = Math.random() > 0.5 ? 0.1 : -0.1;
-        predictions.borrow_activity = {
-            current: borrowRatio,
-            predicted: Math.max(0, borrowRatio + borrowTrend),
-            trend: borrowTrend > 0 ? 'increasing' : 'decreasing'
-        };
-        
-        return predictions;
-    } catch (error) {
-        console.error('Error predicting future behavior:', error);
-        return {};
+  /**
+   * Create a data provider from transaction history
+   * 
+   * @param {function} fetchTransactions - Function that returns transaction history
+   * @returns {Object} Data provider object
+   */
+  createTransactionDataProvider(fetchTransactions) {
+    return {
+      name: 'TransactionDataProvider',
+      getFeatures: async (address) => {
+        const transactions = await fetchTransactions(address);
+        return this.processTransactionData(transactions);
+      }
+    };
+  }
+
+  /**
+   * Extract wallet characteristics features
+   * 
+   * @param {Object} walletData - Wallet data
+   * @returns {Object} Extracted features
+   */
+  processWalletData(walletData) {
+    if (!walletData) {
+      return {};
     }
+    
+    // Calculate wallet age
+    const creationTime = walletData.creationTime || 0;
+    const walletAgeDays = creationTime ? Math.floor((Date.now() - creationTime) / (24 * 60 * 60 * 1000)) : 0;
+    
+    // Calculate balance metrics
+    const currentBalance = parseFloat(walletData.balance) || 0;
+    
+    // Calculate balance volatility if history is available
+    let balanceVolatility = 0;
+    if (walletData.balanceHistory && walletData.balanceHistory.length > 1) {
+      const balances = walletData.balanceHistory.map(entry => parseFloat(entry.balance) || 0);
+      const avgBalance = balances.reduce((sum, bal) => sum + bal, 0) / balances.length;
+      
+      // Calculate variance
+      const variance = balances.reduce((sum, bal) => sum + Math.pow(bal - avgBalance, 2), 0) / balances.length;
+      
+      // Normalize volatility
+      balanceVolatility = avgBalance > 0 ? Math.sqrt(variance) / avgBalance : 0;
+    }
+    
+    // Calculate balance utilization
+    const totalAvailable = currentBalance + (parseFloat(walletData.borrowed) || 0);
+    const utilizationRatio = totalAvailable > 0 ? (parseFloat(walletData.borrowed) || 0) / totalAvailable : 0;
+    
+    return {
+      wallet_age_days: walletAgeDays,
+      wallet_balance: currentBalance,
+      wallet_balance_volatility: balanceVolatility,
+      balance_utilization_ratio: utilizationRatio
+    };
+  }
+
+  /**
+   * Clear the cache
+   */
+  clearCache() {
+    this.cache.clear();
+  }
 }
 
-module.exports = {
-    assessRisk,
-    predictDefaultProbability,
-    optimizeInterestRate,
-    generateEarlyWarningSignals,
-    predictFutureBehavior
-};
+// Export for Node.js or browser
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = IntelliLendAI;
+} else if (typeof window !== 'undefined') {
+  window.IntelliLendAI = IntelliLendAI;
+}

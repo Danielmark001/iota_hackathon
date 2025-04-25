@@ -582,7 +582,7 @@ class RiskAssessmentModel:
     
     def calculate_risk_score(self, user_data):
         """
-        Calculate a comprehensive risk score for a user (0-100).
+        Calculate a comprehensive risk score for a user (0-100) using ensemble methods.
         
         Args:
             user_data (pd.DataFrame): User features
@@ -590,11 +590,25 @@ class RiskAssessmentModel:
         Returns:
             float: Risk score (0-100, higher means higher risk)
         """
-        # Use the classifier for risk category
+        # Use multiple models in an ensemble approach for robust scoring
+        
+        # 1. Use the classifier for risk category
         risk_category = self.predict_risk_category(user_data)
         
-        # Use the default predictor for default probability
+        # 2. Use the default predictor for default probability
         default_prob = self.predict_default_probability(user_data)
+        
+        # 3. Process data for feature-based scoring
+        processed_data = self.preprocess_data(user_data)
+        
+        # 4. Use time series predictions if available
+        time_series_risk = self._evaluate_time_series_risk(user_data)
+        
+        # 5. Network analysis risk (would use graph analysis in production)
+        network_risk = self._evaluate_network_risk(user_data)
+        
+        # 6. Market correlation risk
+        market_risk = self._evaluate_market_risk(user_data)
         
         # Base score from risk category (0-25 for each category)
         base_score = risk_category * 25
@@ -602,21 +616,139 @@ class RiskAssessmentModel:
         # Adjust with default probability (0-25)
         probability_adjustment = default_prob * 25
         
-        # Use engineered features for final adjustment (0-25)
-        processed_data = self.preprocess_data(user_data)
+        # Use engineered features for adjustment (0-15)
         if 'combined_risk_indicator' in processed_data:
-            feature_adjustment = processed_data['combined_risk_indicator'].values[0] * 25
-            feature_adjustment = np.clip(feature_adjustment, 0, 25)
+            feature_adjustment = processed_data['combined_risk_indicator'].values[0] * 15
+            feature_adjustment = np.clip(feature_adjustment, 0, 15)
         else:
             feature_adjustment = 0
         
-        # Calculate final score
-        risk_score = base_score + probability_adjustment + feature_adjustment
+        # Time series prediction adjustment (0-15)
+        time_series_adjustment = time_series_risk * 15
+        
+        # Network risk adjustment (0-10)
+        network_adjustment = network_risk * 10
+        
+        # Market risk adjustment (0-10)
+        market_adjustment = market_risk * 10
+        
+        # Apply weighted ensemble scoring
+        weights = [0.25, 0.25, 0.15, 0.15, 0.1, 0.1]  # Weights for each component
+        components = [
+            base_score, 
+            probability_adjustment, 
+            feature_adjustment, 
+            time_series_adjustment,
+            network_adjustment,
+            market_adjustment
+        ]
+        
+        # Calculate weighted score
+        risk_score = sum(w * c for w, c in zip(weights, components))
+        
+        # Apply non-linear transformation for more accurate representation
+        # Use sigmoid-like function to handle extreme values better
+        risk_score = 100 / (1 + np.exp(-0.05 * (risk_score - 50)))
+        
+        # Apply additional adjustment for identity verification status
+        if 'identity_verified' in user_data.columns and user_data['identity_verified'].values[0]:
+            verification_level = user_data['identity_verification_level'].values[0] 
+            if isinstance(verification_level, str):
+                if verification_level == 'full':
+                    risk_score *= 0.8  # 20% reduction for full verification
+                elif verification_level == 'advanced':
+                    risk_score *= 0.85  # 15% reduction for advanced verification
+                elif verification_level == 'basic':
+                    risk_score *= 0.95  # 5% reduction for basic verification
         
         # Ensure it's within [0, 100]
         risk_score = np.clip(risk_score, 0, 100)
         
         return risk_score
+        
+    def _evaluate_time_series_risk(self, user_data):
+        """
+        Evaluate risk from time series predictions
+        
+        Args:
+            user_data (pd.DataFrame): User features
+            
+        Returns:
+            float: Risk factor (0-1)
+        """
+        # In production, this would use actual time series forecasts
+        # For now, just extract a risk factor based on volatility features
+        
+        if 'wallet_balance_volatility' in user_data.columns:
+            volatility = user_data['wallet_balance_volatility'].values[0]
+        else:
+            volatility = 0.3  # Default medium volatility
+            
+        if 'transaction_growth_rate' in user_data.columns:
+            growth_rate = user_data['transaction_growth_rate'].values[0]
+            # Negative growth is higher risk, positive growth is lower risk
+            growth_factor = 0.5 - min(max(growth_rate, -0.5), 0.5)
+        else:
+            growth_factor = 0.25  # Default moderate risk
+            
+        # Combine factors
+        return 0.6 * volatility + 0.4 * growth_factor
+    
+    def _evaluate_network_risk(self, user_data):
+        """
+        Evaluate risk from network analysis
+        
+        Args:
+            user_data (pd.DataFrame): User features
+            
+        Returns:
+            float: Risk factor (0-1)
+        """
+        # In production, this would use graph analysis of transaction networks
+        # For demo purposes, use available network-related features
+        
+        risk_factor = 0.5  # Default medium risk
+        
+        # Adjust based on counterparty metrics if available
+        if 'trusted_counterparties_ratio' in user_data.columns:
+            trust_ratio = user_data['trusted_counterparties_ratio'].values[0]
+            risk_factor -= trust_ratio * 0.3  # Lower risk with more trusted counterparties
+            
+        if 'network_centrality' in user_data.columns:
+            centrality = user_data['network_centrality'].values[0]
+            risk_factor -= centrality * 0.2  # Lower risk with higher centrality (more established)
+            
+        # Ensure it's within [0, 1]
+        return np.clip(risk_factor, 0, 1)
+    
+    def _evaluate_market_risk(self, user_data):
+        """
+        Evaluate risk from market correlation
+        
+        Args:
+            user_data (pd.DataFrame): User features
+            
+        Returns:
+            float: Risk factor (0-1)
+        """
+        # In production, this would incorporate market volatility and correlation data
+        # For demo purposes, use available market-related features
+        
+        risk_factor = 0.5  # Default medium risk
+        
+        # Adjust based on market correlation if available
+        if 'market_volatility_correlation' in user_data.columns:
+            correlation = user_data['market_volatility_correlation'].values[0]
+            # Higher correlation means higher risk (more affected by market movements)
+            risk_factor += correlation * 0.4
+            
+        if 'token_price_correlation' in user_data.columns:
+            price_correlation = user_data['token_price_correlation'].values[0]
+            # High absolute correlation (positive or negative) increases risk
+            risk_factor += abs(price_correlation) * 0.3
+            
+        # Ensure it's within [0, 1]
+        return np.clip(risk_factor, 0, 1)
     
     def save_models(self, directory='./models'):
         """
