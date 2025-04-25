@@ -13,6 +13,10 @@ import SettingsPage from './pages/SettingsPage';
 import LandingPage from './pages/LandingPage';
 import NotFound from './pages/NotFound';
 import LoadingBackdrop from './components/ui/LoadingBackdrop';
+import { IoTAProvider } from './context/IoTAContext';
+import { ThemeProvider } from './context/ThemeContext';
+import { SnackbarProvider } from './context/SnackbarContext';
+import { Web3Provider } from './context/Web3Context';
 
 function App() {
   // DEVELOPMENT MODE: No authentication required, all routes accessible
@@ -20,31 +24,38 @@ function App() {
 
   // Direct component rendering for development
   return (
-    <>
-      <CssBaseline />
-      <div className="app-container">
-        <Header />
-        <Box className="content-wrapper">
-          <Routes>
-            {/* Public routes */}
-            <Route path="/" element={<LandingPage />} />
-            
-            {/* All routes directly accessible for development */}
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/deposit" element={<DepositPage />} />
-            <Route path="/borrow" element={<BorrowPage />} />
-            <Route path="/identity" element={<IdentityPage />} />
-            <Route path="/risk" element={<RiskAssessmentPage />} />
-            <Route path="/portfolio" element={<PortfolioPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            
-            {/* 404 route */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Box>
-        <Footer />
-      </div>
-    </>
+    <ThemeProvider>
+      <SnackbarProvider>
+        <Web3Provider>
+          <IoTAProvider>
+            <CssBaseline />
+            <div className="app-container">
+              <Header />
+              <Box className="content-wrapper">
+                <Routes>
+                  {/* Public routes */}
+                  <Route path="/" element={<LandingPage />} />
+                  
+                  {/* All routes directly accessible for development */}
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/deposit" element={<DepositPage />} />
+                  <Route path="/borrow" element={<BorrowPage />} />
+                  <Route path="/identity" element={<IdentityPage />} />
+                  <Route path="/risk" element={<RiskAssessmentPage />} />
+                  <Route path="/portfolio" element={<PortfolioPage />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                  
+                  {/* 404 route */}
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </Box>
+              <Footer />
+              <LoadingBackdrop />
+            </div>
+          </IoTAProvider>
+        </Web3Provider>
+      </SnackbarProvider>
+    </ThemeProvider>
   );
 }
 

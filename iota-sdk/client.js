@@ -2,9 +2,11 @@
  * IOTA SDK Client Wrapper
  * 
  * This file provides a simplified interface to the IOTA SDK Client functionality.
+ * Enhanced with node failover, exponential backoff, and resilience features.
  */
 
 const { Client, initLogger } = require('@iota/sdk');
+const logger = require('./utils/logger');
 const config = require('./config');
 
 // Initialize logging for better debugging
@@ -15,60 +17,377 @@ initLogger({
 });
 
 /**
- * Create an IOTA Client instance
+ * Node Manager for handling node failover and health checks
+ */
+class NodeManager {
+  constructor(nodes, healthCheckInterval = config.CONNECTION_RESILIENCE.healthCheckIntervalMs) {
+    this.nodes = nodes.map(url => ({
+      url,
+      healthy: true,
+      lastCheckTime: Date.now(),
+      failureCount: 0,
+      responseTime: 0
+    }));
+    this.currentNodeIndex = 0;
+    this.healthCheckInterval = healthCheckInterval;
+    this.lastHealthCheck = Date.now();
+    
+    // Start periodic health checks
+    this.startHealthChecks();
+  }
+  
+  /**
+   * Get the current active node
+   * @returns {string} URL of the current node
+   */
+  getCurrentNode() {
+    return this.nodes[this.currentNodeIndex].url;
+  }
+  
+  /**
+   * Get all healthy nodes
+   * @returns {string[]} Array of healthy node URLs
+   */
+  getHealthyNodes() {
+    return this.nodes
+      .filter(node => node.healthy)
+      .map(node => node.url);
+  }
+  
+  /**
+   * Mark a node as unhealthy and switch to another healthy node
+   * @param {number} index - Index of the node to mark unhealthy
+   * @param {Error} error - The error that occurred with this node
+   */
+  markNodeUnhealthy(index, error) {
+    const node = this.nodes[index];
+    node.healthy = false;
+    node.lastCheckTime = Date.now();
+    node.failureCount++;
+    
+    logger.warn(`Marked node ${node.url} as unhealthy: ${error.message}`);
+    
+    // Switch to another healthy node
+    this.switchToHealthyNode();
+  }
+  
+  /**
+   * Mark the current node as unhealthy and switch to another
+   * @param {Error} error - The error that occurred
+   */
+  markCurrentNodeUnhealthy(error) {
+    this.markNodeUnhealthy(this.currentNodeIndex, error);
+  }
+  
+  /**
+   * Switch to the next healthy node
+   * @returns {string} URL of the selected node
+   */
+  switchToHealthyNode() {
+    const healthyNodes = this.nodes.filter(node => node.healthy);
+    
+    // If no healthy nodes left, reset all nodes to healthy
+    if (healthyNodes.length === 0) {
+      logger.warn('No healthy nodes available, resetting all nodes to healthy state');
+      this.nodes.forEach(node => {
+        node.healthy = true;
+        node.failureCount = 0;
+      });
+    }
+    
+    // Find next healthy node sorted by failure count (prefer nodes with fewer failures)
+    const sortedNodes = [...this.nodes]
+      .filter(node => node.healthy)
+      .sort((a, b) => a.failureCount - b.failureCount || a.responseTime - b.responseTime);
+    
+    if (sortedNodes.length > 0) {
+      // Find the index of the selected node in the original array
+      const selectedNode = sortedNodes[0];
+      this.currentNodeIndex = this.nodes.findIndex(node => node.url === selectedNode.url);
+      logger.info(`Switched to node: ${this.getCurrentNode()}`);
+    } else {
+      // If no healthy node (should not happen due to reset above), use the next node
+      this.currentNodeIndex = (this.currentNodeIndex + 1) % this.nodes.length;
+      logger.warn(`No optimal node found, using next node: ${this.getCurrentNode()}`);
+    }
+    
+    return this.getCurrentNode();
+  }
+  
+  /**
+   * Start periodic health checks on all nodes
+   */
+  startHealthChecks() {
+    // Don't use setInterval to avoid overlapping checks if they take too long
+    const runHealthCheck = async () => {
+      // Only check if sufficient time has passed since the last check
+      if (Date.now() - this.lastHealthCheck >= this.healthCheckInterval) {
+        try {
+          await this.checkAllNodesHealth();
+          this.lastHealthCheck = Date.now();
+        } catch (error) {
+          logger.error(`Error during health check: ${error.message}`);
+        }
+      }
+      
+      // Schedule next check
+      setTimeout(runHealthCheck, Math.max(1000, this.healthCheckInterval / 10));
+    };
+    
+    // Start the health check loop
+    runHealthCheck();
+  }
+  
+  /**
+   * Check the health of all nodes
+   */
+  async checkAllNodesHealth() {
+    logger.debug('Running health check on all nodes');
+    
+    // Check each node with a simple getInfo request
+    const checkPromises = this.nodes.map(async (node, index) => {
+      // Skip recently checked unhealthy nodes
+      const unhealthyRecoveryTime = config.CONNECTION_RESILIENCE.nodeRecoveryTimeMs;
+      if (!node.healthy && (Date.now() - node.lastCheckTime < unhealthyRecoveryTime)) {
+        return;
+      }
+      
+      try {
+        // Create a temporary client for health check
+        const client = new Client({ nodes: [node.url] });
+        
+        const startTime = Date.now();
+        const info = await withTimeout(
+          client.getInfo(),
+          5000 // Short timeout for health checks
+        );
+        const endTime = Date.now();
+        
+        // Update node health status
+        node.healthy = info.nodeInfo.status.isHealthy;
+        node.lastCheckTime = Date.now();
+        node.responseTime = endTime - startTime;
+        
+        if (node.failureCount > 0) node.failureCount--;
+        
+        logger.debug(`Node ${node.url} health check: ${node.healthy ? 'healthy' : 'unhealthy'} (${node.responseTime}ms)`);
+      } catch (error) {
+        // Mark node as potentially unhealthy, but only fully mark as unhealthy
+        // after consecutive failures (configured in nodeUnhealthyThreshold)
+        node.failureCount++;
+        node.lastCheckTime = Date.now();
+        
+        if (node.failureCount >= config.CONNECTION_RESILIENCE.nodeUnhealthyThreshold) {
+          node.healthy = false;
+          logger.warn(`Node ${node.url} marked unhealthy after ${node.failureCount} failures: ${error.message}`);
+        } else {
+          logger.debug(`Node ${node.url} health check failed (${node.failureCount}/${config.CONNECTION_RESILIENCE.nodeUnhealthyThreshold}): ${error.message}`);
+        }
+      }
+    });
+    
+    // Wait for all checks to complete
+    await Promise.all(checkPromises);
+    
+    // Make sure current node is healthy
+    if (this.nodes[this.currentNodeIndex] && !this.nodes[this.currentNodeIndex].healthy) {
+      this.switchToHealthyNode();
+    }
+    
+    // Log node status summary
+    const healthySummary = this.nodes
+      .map(n => `${n.url}: ${n.healthy ? 'healthy' : 'unhealthy'}`)
+      .join(', ');
+    logger.debug(`Node health summary: ${healthySummary}`);
+  }
+}
+
+/**
+ * Execute a function with timeout
+ * @param {Promise} promise - The promise to execute
+ * @param {number} timeoutMs - Timeout in milliseconds
+ * @returns {Promise} Promise with timeout
+ */
+async function withTimeout(promise, timeoutMs) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => 
+      setTimeout(() => reject(new Error(`Operation timed out after ${timeoutMs}ms`)), timeoutMs)
+    )
+  ]);
+}
+
+/**
+ * Execute a function with exponential backoff retry
+ * @param {Function} operation - Function to execute that returns a promise
+ * @param {Object} options - Retry options
+ * @returns {Promise} Result of operation
+ */
+async function withExponentialBackoff(operation, options = {}) {
+  const {
+    maxRetries = config.CONNECTION_RESILIENCE.maxRetries,
+    initialDelayMs = config.CONNECTION_RESILIENCE.initialDelayMs,
+    maxDelayMs = config.CONNECTION_RESILIENCE.maxDelayMs,
+    factor = 2,
+    jitter = true,
+  } = options;
+  
+  let attempt = 0;
+  let lastError;
+  
+  while (attempt <= maxRetries) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      attempt++;
+      
+      if (attempt > maxRetries) {
+        break;
+      }
+      
+      // Calculate delay with exponential backoff
+      let delay = initialDelayMs * Math.pow(factor, attempt - 1);
+      
+      // Apply maximum delay limit
+      delay = Math.min(delay, maxDelayMs);
+      
+      // Add jitter to prevent thundering herd problem
+      if (jitter) {
+        delay = delay * (0.5 + Math.random() / 2); // Random between 50-100% of delay
+      }
+      
+      logger.debug(`Retrying operation (attempt ${attempt}/${maxRetries}) after ${delay.toFixed(0)}ms delay: ${error.message}`);
+      
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  // If we get here, all retries failed
+  logger.error(`All ${maxRetries} retry attempts failed`);
+  throw lastError;
+}
+
+// Store node managers for different networks to avoid recreation
+const nodeManagers = {};
+
+/**
+ * Create an IOTA Client instance with enhanced resilience
  * @param {string} network - The network to connect to (mainnet/testnet)
- * @returns {Promise<Client>} The IOTA Client instance
+ * @returns {Promise<{client: Client, nodeManager: NodeManager}>} The IOTA Client instance and node manager
  */
 async function createClient(network = config.DEFAULT_NETWORK) {
   try {
+    logger.info(`Creating IOTA client for network: ${network}`);
+    
+    // Get client options from config
     const clientOptions = config.getClientOptions(network);
     
-    // Add advanced options to client configuration
+    // Create or retrieve the node manager for this network
+    if (!nodeManagers[network]) {
+      nodeManagers[network] = new NodeManager(
+        clientOptions.nodes,
+        config.CONNECTION_RESILIENCE.healthCheckIntervalMs
+      );
+      logger.info(`Created new node manager for network ${network} with ${clientOptions.nodes.length} nodes`);
+    }
+    
+    const nodeManager = nodeManagers[network];
+    
+    // Get healthy nodes from node manager
+    const healthyNodes = nodeManager.getHealthyNodes();
+    
+    // Enhanced client options with healthy nodes
     const enhancedOptions = {
       ...clientOptions,
+      nodes: healthyNodes.length > 0 ? healthyNodes : [nodeManager.getCurrentNode()],
       ignoreNodeHealth: false,
       nodeSyncEnabled: true,
-      quorumSize: 3, // Require consensus from 3 nodes for increased security
-      minPowScore: 1000, // Set minimum PoW score
-      fallbackToLocalPow: true, // Use local PoW if remote is unavailable
-      localPow: true // Enable local proof of work
+      quorumSize: Math.min(healthyNodes.length, config.CONNECTION_RESILIENCE.quorumMinNodes),
+      minPowScore: clientOptions.minPowScore || 1000,
+      fallbackToLocalPow: true,
+      localPow: true,
+      maxApiRequestsPerSecond: 20 // Rate limit API requests
     };
     
-    // Create client instance with better error handling
-    let client;
-    try {
-      client = new Client(enhancedOptions);
-    } catch (error) {
-      console.error('Failed to initialize IOTA Client:', error);
-      if (error.message && error.message.includes('connect')) {
-        throw new Error(`Connection error to network ${network}: ${error.message}`);
-      } else {
-        throw error;
+    // Create client instance with retry and error handling
+    const client = await withExponentialBackoff(async () => {
+      try {
+        const client = new Client(enhancedOptions);
+        return client;
+      } catch (error) {
+        logger.error(`Failed to initialize IOTA Client: ${error.message}`);
+        
+        if (error.message && error.message.includes('connect')) {
+          // Mark current node as unhealthy and try another one
+          nodeManager.markCurrentNodeUnhealthy(error);
+          throw new Error(`Connection error to network ${network}: ${error.message}`);
+        } else {
+          throw error;
+        }
       }
-    }
+    });
     
-    // Test connection with timeout
+    // Test connection with timeout and retry
     try {
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Connection timeout')), 10000)
-      );
+      // Use withExponentialBackoff to retry the getInfo call if it fails
+      const info = await withExponentialBackoff(async () => {
+        try {
+          return await withTimeout(
+            client.getInfo(),
+            config.CONNECTION_RESILIENCE.timeoutMs
+          );
+        } catch (error) {
+          // Mark current node as unhealthy and try another one
+          nodeManager.markCurrentNodeUnhealthy(error);
+          
+          // Update client nodes with new healthy nodes
+          client.updateSetting('nodes', nodeManager.getHealthyNodes());
+          
+          throw error; // Rethrow to trigger retry
+        }
+      });
       
-      const infoPromise = client.getInfo();
-      const info = await Promise.race([infoPromise, timeoutPromise]);
+      // Log node information
+      logger.info(`Connected to IOTA node: ${info.nodeInfo.name} (${info.nodeInfo.version})`);
+      logger.info(`Node health: ${info.nodeInfo.status.isHealthy ? 'Healthy' : 'Unhealthy'}`);
+      logger.info(`Protocol version: ${info.nodeInfo.protocol.version}`);
+      logger.info(`Network: ${info.nodeInfo.protocol.networkName || network}`);
       
-      // More detailed node information
-      console.log(`Connected to IOTA node: ${info.nodeInfo.name} (${info.nodeInfo.version})`);
-      console.log(`Node health: ${info.nodeInfo.status.isHealthy ? 'Healthy' : 'Unhealthy'}`);
-      console.log(`Protocol version: ${info.nodeInfo.protocol.version}`);
-      console.log(`Network: ${info.nodeInfo.protocol.networkName || network}`);
+      // Create monitoring function that updates client nodes if needed
+      const monitorClientNodes = () => {
+        setTimeout(async () => {
+          try {
+            // Get current healthy nodes
+            const healthyNodes = nodeManager.getHealthyNodes();
+            
+            // Update client nodes if they've changed
+            if (JSON.stringify(client.getSettings().nodes) !== JSON.stringify(healthyNodes)) {
+              client.updateSetting('nodes', healthyNodes);
+              logger.debug(`Updated client nodes with ${healthyNodes.length} healthy nodes`);
+            }
+            
+            // Continue monitoring
+            monitorClientNodes();
+          } catch (error) {
+            logger.error(`Error in node monitoring: ${error.message}`);
+            // Continue monitoring despite errors
+            monitorClientNodes();
+          }
+        }, config.CONNECTION_RESILIENCE.healthCheckIntervalMs);
+      };
       
-      return client;
+      // Start monitoring
+      monitorClientNodes();
+      
+      return { client, nodeManager };
     } catch (error) {
-      console.error('Error connecting to IOTA node:', error);
-      throw new Error(`Failed to connect to IOTA node: ${error.message}`);
+      logger.error(`Error connecting to IOTA node: ${error.message}`);
+      throw new Error(`Failed to connect to IOTA network ${network}: ${error.message}`);
     }
   } catch (error) {
-    console.error('Error creating IOTA client:', error);
+    logger.error(`Error creating IOTA client: ${error.message}`);
     throw error;
   }
 }
@@ -78,186 +397,469 @@ async function createClient(network = config.DEFAULT_NETWORK) {
  * @param {Client} client - The IOTA client instance
  * @param {number} accountIndex - Account index
  * @param {number} addressIndex - Address index
+ * @param {string} network - Network to use (for determining bech32Hrp)
  * @returns {Promise<string>} The Bech32 address
  */
-async function generateAddress(client, accountIndex = 0, addressIndex = 0) {
-  try {
-    // Input validation
-    if (accountIndex < 0 || addressIndex < 0) {
-      throw new Error('Account and address indices must be non-negative');
-    }
-    
-    // Get seed from the client's configuration
-    const secretManager = client.getSecretManager();
-    
-    // Generate Bech32 address with proper parameters
-    const addressOptions = {
-      coinType: 4219, // Shimmer coin type
-      accountIndex,
-      addressIndex,
-      bech32Hrp: 'smr', // Human-readable part for Shimmer
-      includeInternal: false // External address
-    };
-    
-    const addressObject = await client.generateBech32Address(secretManager, addressOptions);
-    return addressObject;
-  } catch (error) {
-    console.error('Error generating address:', error);
-    // Enhance error message for common issues
-    if (error.message && error.message.includes('seed')) {
-      throw new Error('Seed access error: Check stronghold configuration');
-    }
-    throw error;
+async function generateAddress(client, accountIndex = 0, addressIndex = 0, network = config.DEFAULT_NETWORK) {
+  // Get network configuration
+  const networkConfig = config.NETWORKS[network];
+  if (!networkConfig) {
+    throw new Error(`Network '${network}' not found in configuration.`);
   }
+  
+  return await withExponentialBackoff(async () => {
+    try {
+      // Input validation
+      if (accountIndex < 0 || addressIndex < 0) {
+        throw new Error('Account and address indices must be non-negative');
+      }
+      
+      // Get secret manager from the client's configuration
+      const secretManager = client.getSecretManager();
+      
+      // Generate Bech32 address with proper parameters
+      const addressOptions = {
+        coinType: networkConfig.coinType || 4219, // Shimmer coin type
+        accountIndex,
+        addressIndex,
+        bech32Hrp: networkConfig.protocol?.bech32Hrp || 'smr', // Human-readable part
+        includeInternal: false // External address
+      };
+      
+      const addressObject = await client.generateBech32Address(secretManager, addressOptions);
+      logger.info(`Generated address: ${addressObject}`);
+      
+      return addressObject;
+    } catch (error) {
+      logger.error(`Error generating address: ${error.message}`);
+      
+      // Enhance error message for common issues
+      if (error.message && error.message.includes('seed')) {
+        throw new Error('Seed access error: Check stronghold configuration');
+      } else if (error.message && error.message.includes('stronghold')) {
+        throw new Error('Stronghold error: Password may be incorrect or stronghold file is corrupted');
+      }
+      
+      throw error;
+    }
+  });
 }
 
 /**
- * Get balance for a Bech32 address
+ * Get balance for a Bech32 address with enhanced resilience
  * @param {Client} client - The IOTA client instance
  * @param {string} address - The Bech32 address
+ * @param {NodeManager} nodeManager - Optional node manager for failover
  * @returns {Promise<object>} The balance of the address
  */
-async function getBalance(client, address) {
-  try {
-    // Input validation
-    if (!address || !address.startsWith('smr1')) {
-      throw new Error('Invalid address format: must be a valid Shimmer address');
-    }
-    
-    // Query balance with retries for network resilience
-    let attempts = 0;
-    const maxAttempts = 3;
-    let balance;
-    
-    while (attempts < maxAttempts) {
-      try {
-        balance = await client.getAddressBalance(address);
-        break;
-      } catch (error) {
-        attempts++;
-        if (attempts >= maxAttempts) throw error;
-        
-        // Exponential backoff before retry
-        await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempts)));
-        console.log(`Retrying balance query (${attempts}/${maxAttempts})...`);
+async function getBalance(client, address, nodeManager = null) {
+  return await withExponentialBackoff(async () => {
+    try {
+      // Input validation with proper handling for different networks
+      if (!address) {
+        throw new Error('Address is required');
       }
+      
+      // Determine valid prefix based on the client's network
+      const settings = client.getSettings();
+      const networkInfo = settings.networkInfo || {};
+      const validPrefix = networkInfo.bech32Hrp || 'smr';
+      
+      if (!address.startsWith(`${validPrefix}1`)) {
+        throw new Error(`Invalid address format: must be a valid ${validPrefix.toUpperCase()} address starting with ${validPrefix}1`);
+      }
+      
+      // Query balance
+      const balance = await client.getAddressBalance(address);
+      
+      // Format for better readability
+      const baseAmount = BigInt(balance.baseCoins) / BigInt(1000000);
+      logger.info(`Balance for ${address}: ${baseAmount} ${validPrefix.toUpperCase()}`);
+      
+      // Add additional token information if present
+      if (balance.nativeTokens && balance.nativeTokens.length > 0) {
+        logger.info('Native tokens:');
+        balance.nativeTokens.forEach(token => {
+          logger.info(`- Token ID: ${token.id.slice(0, 10)}...`);
+          logger.info(`  Amount: ${token.amount}`);
+        });
+      }
+      
+      return balance;
+    } catch (error) {
+      logger.error(`Error getting balance for ${address}: ${error.message}`);
+      
+      // Handle node errors with failover if node manager is provided
+      if (nodeManager && error.message && (
+        error.message.includes('connect') ||
+        error.message.includes('timeout') ||
+        error.message.includes('ECONNREFUSED') ||
+        error.message.includes('503')
+      )) {
+        // Mark current node as unhealthy
+        nodeManager.markCurrentNodeUnhealthy(error);
+        
+        // Update client nodes
+        client.updateSetting('nodes', nodeManager.getHealthyNodes());
+      }
+      
+      // Provide more helpful error messages
+      if (error.message && error.message.includes('not found')) {
+        throw new Error('Address not found on the network or has no transactions');
+      }
+      
+      throw error;
     }
-    
-    // Format for better readability
-    const smrAmount = BigInt(balance.baseCoins) / BigInt(1000000);
-    console.log(`Balance for ${address}: ${smrAmount} SMR`);
-    
-    // Add additional token information if present
-    if (balance.nativeTokens && balance.nativeTokens.length > 0) {
-      console.log('Native tokens:');
-      balance.nativeTokens.forEach(token => {
-        console.log(`- Token ID: ${token.id.slice(0, 10)}...`);
-        console.log(`  Amount: ${token.amount}`);
-      });
-    }
-    
-    return balance;
-  } catch (error) {
-    console.error('Error getting balance:', error);
-    // Provide more helpful error messages
-    if (error.message && error.message.includes('not found')) {
-      throw new Error('Address not found on the network or has no transactions');
-    }
-    throw error;
-  }
+  });
 }
 
 /**
- * Submit a block to the IOTA network
+ * Submit a block to the IOTA network with enhanced resilience
  * @param {Client} client - The IOTA client instance
  * @param {object} blockData - The block data to submit
- * @returns {Promise<object>} The block ID
+ * @param {NodeManager} nodeManager - Optional node manager for failover
+ * @returns {Promise<object>} The block ID and metadata
  */
-async function submitBlock(client, blockData) {
-  try {
-    // Input validation
-    if (!blockData || typeof blockData !== 'object') {
-      throw new Error('Invalid block data: must be a valid object');
+async function submitBlock(client, blockData, nodeManager = null) {
+  return await withExponentialBackoff(async () => {
+    try {
+      // Input validation
+      if (!blockData || typeof blockData !== 'object') {
+        throw new Error('Invalid block data: must be a valid object');
+      }
+      
+      // Enhance block with appropriate options if not provided
+      const enhancedBlock = {
+        ...blockData,
+        // Add defaults if not specified
+        parents: blockData.parents || null, // Use null to let the node choose parents
+        payload: blockData.payload || null,
+        tag: blockData.tag || null
+      };
+      
+      // Submit with error handling
+      const result = await client.submitBlock(enhancedBlock);
+      
+      // Log successful submission
+      logger.info(`Block submitted successfully with ID: ${result.blockId}`);
+      
+      // Check block inclusion with timeout
+      let inclusion = null;
+      try {
+        inclusion = await withTimeout(
+          client.checkBlockInclusion(result.blockId),
+          10000 // 10 second timeout for inclusion check
+        );
+        logger.info(`Block inclusion state: ${inclusion.state}`);
+      } catch (inclusionError) {
+        logger.warn(`Block inclusion check timed out: ${inclusionError.message}`);
+        // Don't fail the operation, but provide the information
+        inclusion = { state: 'unknown', error: inclusionError.message };
+      }
+      
+      return {
+        ...result,
+        inclusion
+      };
+    } catch (error) {
+      logger.error(`Error submitting block: ${error.message}`);
+      
+      // Handle node errors with failover if node manager is provided
+      if (nodeManager && error.message && (
+        error.message.includes('connect') ||
+        error.message.includes('timeout') ||
+        error.message.includes('ECONNREFUSED') ||
+        error.message.includes('503')
+      )) {
+        // Mark current node as unhealthy
+        nodeManager.markCurrentNodeUnhealthy(error);
+        
+        // Update client nodes
+        client.updateSetting('nodes', nodeManager.getHealthyNodes());
+      }
+      
+      // Provide detailed error information based on common issues
+      if (error.message && error.message.includes('rejected')) {
+        throw new Error('Block rejected by the node. Verify block structure.');
+      } else if (error.message && error.message.includes('timeout')) {
+        throw new Error('Block submission timed out. The network may be congested. The block may still be processed.');
+      }
+      
+      throw error;
     }
-    
-    // Enhance block with appropriate options if not provided
-    const enhancedBlock = {
-      ...blockData,
-      // Add defaults if not specified
-      parents: blockData.parents || null, // Use null to let the node choose parents
-      payload: blockData.payload || null,
-      tag: blockData.tag || null
-    };
-    
-    // Submit with error handling
-    const result = await client.submitBlock(enhancedBlock);
-    
-    // Log successful submission
-    console.log(`Block submitted successfully with ID: ${result.blockId}`);
-    
-    // Optionally check block inclusion (commented out as it may take time)
-    // const inclusion = await client.checkBlockInclusion(result.blockId);
-    // console.log(`Block inclusion state: ${inclusion.state}`);
-    
-    return result;
-  } catch (error) {
-    console.error('Error submitting block:', error);
-    
-    // Provide detailed error information based on common issues
-    if (error.message && error.message.includes('rejected')) {
-      throw new Error('Block rejected by the node. Verify block structure.');
-    } else if (error.message && error.message.includes('timeout')) {
-      throw new Error('Block submission timed out. The network may be congested.');
-    }
-    
-    throw error;
-  }
+  });
 }
 
 /**
- * Get network information
+ * Monitor a transaction for confirmation status changes
  * @param {Client} client - The IOTA client instance
+ * @param {string} blockId - The block ID to monitor
+ * @param {Function} statusCallback - Callback function for status updates
+ * @param {Object} options - Monitoring options
+ * @returns {Promise<object>} Final confirmation status
+ */
+async function monitorTransaction(client, blockId, statusCallback, options = {}) {
+  const {
+    maxDuration = 300000, // 5 minutes
+    checkInterval = 10000, // 10 seconds
+    maxRetries = 5
+  } = options;
+  
+  return new Promise((resolve, reject) => {
+    const startTime = Date.now();
+    let retries = 0;
+    let lastStatus = null;
+    
+    // Function to check confirmation status
+    const checkStatus = async () => {
+      try {
+        // Check if max duration has been exceeded
+        if (Date.now() - startTime > maxDuration) {
+          statusCallback({
+            status: 'timeout',
+            message: `Monitoring timed out after ${maxDuration/1000} seconds`,
+            blockId
+          });
+          return resolve({ status: 'timeout', blockId });
+        }
+        
+        // Check block inclusion
+        const inclusion = await client.checkBlockInclusion(blockId);
+        
+        // If status has changed, call the callback
+        if (!lastStatus || lastStatus.state !== inclusion.state) {
+          lastStatus = inclusion;
+          statusCallback({
+            status: inclusion.state,
+            message: `Block ${blockId} is ${inclusion.state}`,
+            blockId,
+            inclusion
+          });
+        }
+        
+        // If confirmed or conflicting, we're done
+        if (inclusion.state === 'included' || inclusion.state === 'conflicting') {
+          return resolve({ status: inclusion.state, blockId, inclusion });
+        }
+        
+        // Schedule next check
+        setTimeout(checkStatus, checkInterval);
+      } catch (error) {
+        retries++;
+        logger.error(`Error checking transaction status (retry ${retries}/${maxRetries}): ${error.message}`);
+        
+        if (retries >= maxRetries) {
+          statusCallback({
+            status: 'error',
+            message: `Error monitoring transaction: ${error.message}`,
+            blockId
+          });
+          return reject(error);
+        }
+        
+        // Retry with exponential backoff
+        setTimeout(checkStatus, checkInterval * Math.pow(2, retries));
+      }
+    };
+    
+    // Start checking status
+    checkStatus();
+  });
+}
+
+/**
+ * Get network information with enhanced resilience
+ * @param {Client} client - The IOTA client instance
+ * @param {NodeManager} nodeManager - Optional node manager for failover
  * @returns {Promise<object>} Network information
  */
-async function getNetworkInfo(client) {
+async function getNetworkInfo(client, nodeManager = null) {
+  return await withExponentialBackoff(async () => {
+    try {
+      const info = await client.getInfo();
+      const protocol = await client.getProtocolParameters();
+      
+      // Combine relevant information
+      return {
+        nodeInfo: info.nodeInfo,
+        protocol: protocol,
+        baseToken: protocol.baseToken,
+        networkName: protocol.networkName,
+        bech32Hrp: protocol.bech32Hrp,
+        networkId: protocol.networkId,
+        // Add additional useful information
+        isHealthy: info.nodeInfo.status.isHealthy,
+        currentNode: client.getSettings().nodes[0],
+        currentTime: new Date().toISOString()
+      };
+    } catch (error) {
+      logger.error(`Error getting network information: ${error.message}`);
+      
+      // Handle node errors with failover if node manager is provided
+      if (nodeManager && error.message && (
+        error.message.includes('connect') ||
+        error.message.includes('timeout') ||
+        error.message.includes('ECONNREFUSED') ||
+        error.message.includes('503')
+      )) {
+        // Mark current node as unhealthy
+        nodeManager.markCurrentNodeUnhealthy(error);
+        
+        // Update client nodes
+        client.updateSetting('nodes', nodeManager.getHealthyNodes());
+      }
+      
+      throw error;
+    }
+  });
+}
+
+/**
+ * Get tips from the network with enhanced resilience
+ * @param {Client} client - The IOTA client instance
+ * @param {NodeManager} nodeManager - Optional node manager for failover
+ * @returns {Promise<string[]>} Block IDs of tips
+ */
+async function getTips(client, nodeManager = null) {
+  return await withExponentialBackoff(async () => {
+    try {
+      return await client.getTips();
+    } catch (error) {
+      logger.error(`Error getting tips: ${error.message}`);
+      
+      // Handle node errors with failover if node manager is provided
+      if (nodeManager && error.message && (
+        error.message.includes('connect') ||
+        error.message.includes('timeout') ||
+        error.message.includes('ECONNREFUSED') ||
+        error.message.includes('503')
+      )) {
+        // Mark current node as unhealthy
+        nodeManager.markCurrentNodeUnhealthy(error);
+        
+        // Update client nodes
+        client.updateSetting('nodes', nodeManager.getHealthyNodes());
+      }
+      
+      throw error;
+    }
+  });
+}
+
+/**
+ * Get transactions by address with enhanced resilience
+ * @param {Client} client - The IOTA client instance
+ * @param {string} address - Bech32 address to query
+ * @param {NodeManager} nodeManager - Optional node manager for failover
+ * @returns {Promise<object[]>} Transactions for the address
+ */
+async function getAddressTransactions(client, address, nodeManager = null) {
+  return await withExponentialBackoff(async () => {
+    try {
+      // Input validation
+      if (!address) {
+        throw new Error('Address is required');
+      }
+      
+      // Use client to get transactions
+      const transactions = await client.getAddressOutputs(address);
+      
+      logger.info(`Found ${transactions.length} transactions for address ${address}`);
+      return transactions;
+    } catch (error) {
+      logger.error(`Error getting transactions for ${address}: ${error.message}`);
+      
+      // Handle node errors with failover if node manager is provided
+      if (nodeManager && error.message && (
+        error.message.includes('connect') ||
+        error.message.includes('timeout') ||
+        error.message.includes('ECONNREFUSED') ||
+        error.message.includes('503')
+      )) {
+        // Mark current node as unhealthy
+        nodeManager.markCurrentNodeUnhealthy(error);
+        
+        // Update client nodes
+        client.updateSetting('nodes', nodeManager.getHealthyNodes());
+      }
+      
+      throw error;
+    }
+  });
+}
+
+/**
+ * Subscribe to events from the IOTA network
+ * @param {Client} client - The IOTA client instance
+ * @param {string} eventType - Type of event to subscribe to
+ * @param {Function} callback - Callback function for events
+ * @returns {Promise<number>} Subscription ID
+ */
+async function subscribeToEvents(client, eventType, callback) {
   try {
-    const info = await client.getInfo();
-    const protocol = await client.getProtocolParameters();
+    // Simple validation
+    if (!eventType || typeof callback !== 'function') {
+      throw new Error('Event type and callback function are required');
+    }
     
-    // Combine relevant information
-    return {
-      nodeInfo: info.nodeInfo,
-      protocol: protocol,
-      baseToken: protocol.baseToken,
-      networkName: protocol.networkName,
-      bech32Hrp: protocol.bech32Hrp,
-      networkId: protocol.networkId
-    };
+    logger.info(`Subscribing to ${eventType} events`);
+    
+    // Subscribe to events
+    const subscriptionId = await client.subscribe(eventType, (event) => {
+      try {
+        callback(event);
+      } catch (callbackError) {
+        logger.error(`Error in event callback: ${callbackError.message}`);
+      }
+    });
+    
+    logger.info(`Successfully subscribed to ${eventType} events with ID ${subscriptionId}`);
+    return subscriptionId;
   } catch (error) {
-    console.error('Error getting network information:', error);
+    logger.error(`Error subscribing to ${eventType} events: ${error.message}`);
     throw error;
   }
 }
 
 /**
- * Get tips from the network
+ * Unsubscribe from events
  * @param {Client} client - The IOTA client instance
- * @returns {Promise<string[]>} Block IDs of tips
+ * @param {number} subscriptionId - Subscription ID to unsubscribe
+ * @returns {Promise<boolean>} Success result
  */
-async function getTips(client) {
+async function unsubscribeFromEvents(client, subscriptionId) {
   try {
-    return await client.getTips();
+    logger.info(`Unsubscribing from events with ID ${subscriptionId}`);
+    await client.unsubscribe(subscriptionId);
+    logger.info(`Successfully unsubscribed from events with ID ${subscriptionId}`);
+    return true;
   } catch (error) {
-    console.error('Error getting tips:', error);
+    logger.error(`Error unsubscribing from events: ${error.message}`);
     throw error;
   }
 }
 
 module.exports = {
+  // Core client functionality
   createClient,
   generateAddress,
   getBalance,
   submitBlock,
   getNetworkInfo,
-  getTips
+  getTips,
+  
+  // Enhanced transaction monitoring
+  monitorTransaction,
+  getAddressTransactions,
+  
+  // Event subscriptions
+  subscribeToEvents,
+  unsubscribeFromEvents,
+  
+  // Utility functions exposed for use in other modules
+  withExponentialBackoff,
+  withTimeout,
+  
+  // Node management
+  NodeManager
 };

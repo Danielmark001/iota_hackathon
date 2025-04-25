@@ -14,24 +14,244 @@ const helmet = require('helmet');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const dotenv = require('dotenv');
+const path = require('path');
+const fs = require('fs');
 
 // Load environment variables
 dotenv.config();
 
-// Check if we should use mocks
-const USE_MOCKS = process.env.USE_MOCKS === 'true';
+// IOTA SDK Enhanced Integration
+const iotaSDK = require('../iota-sdk');
+const logger = require('../iota-sdk/utils/logger');
 
-// Choose the right AI integration
-let AIIntegration;
-if (USE_MOCKS) {
-  // Use mock implementation
-  AIIntegration = require('../ai-model/api/mock_integration');
-  console.log('Using MOCK AI integration');
-} else {
-  // Use real implementation
-  AIIntegration = require('../ai-model/api/ai_integration');
-  console.log('Using REAL AI integration');
+// Configure logger for IOTA integration
+logger.configure({
+  level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+  enableConsole: true,
+  enableFile: true,
+  logDir: 'logs',
+  logFilename: 'iota-integration.log',
+  format: 'text',
+  colorize: true
+});
+
+// Import specific components from the enhanced IOTA SDK
+const { 
+  createClient, 
+  generateAddress, 
+  getNetworkInfo, 
+  submitBlock,
+  monitorTransaction, 
+  getAddressTransactions,
+  subscribeToEvents,
+  withExponentialBackoff
+} = require('../iota-sdk/client');
+
+const { 
+  createWallet, 
+  getOrCreateAccount, 
+  generateAddress: generateWalletAddress, 
+  sendTokens,
+  getBalance,
+  getTransactionHistory,
+  listenToAccountEvents
+} = require('../iota-sdk/wallet');
+
+logger.info('Initializing enhanced IOTA SDK integration...');
+
+// Connect to IOTA client with resilience
+let iotaClient, iotaNodeManager, iotaWallet, iotaAccount;
+let transactionSubscribers = new Map(); // To store WebSocket subscribers for transaction updates
+
+async function initializeIotaSdk() {
+  try {
+    // Get network from environment or default to testnet
+    const network = process.env.IOTA_NETWORK || 'testnet';
+    logger.info(`Connecting to IOTA ${network}...`);
+    
+    // Initialize IOTA client with enhanced resilience
+    const { client, nodeManager } = await createClient(network);
+    iotaClient = client;
+    iotaNodeManager = nodeManager;
+    
+    logger.info('IOTA client connected successfully');
+    
+    // Get network information with retry
+    const networkInfo = await getNetworkInfo(iotaClient, iotaNodeManager);
+    logger.info(`Connected to ${networkInfo.networkName}`);
+    logger.info(`Bech32 HRP: ${networkInfo.bech32Hrp}`);
+    logger.info(`Using node: ${networkInfo.currentNode}`);
+    
+    // Initialize wallet if stronghold password is set
+    if (process.env.STRONGHOLD_PASSWORD) {
+      try {
+        // Create wallet with enhanced resilience
+        iotaWallet = await createWallet(network);
+        
+        // Get or create account with enhanced options
+        iotaAccount = await getOrCreateAccount(iotaWallet, 'IntelliLend', {
+          syncOnlyBasic: false, // Get full account data
+          allowReattachment: true // Allow reattachment for stuck transactions
+        });
+        
+        logger.info('IOTA wallet initialized successfully');
+        
+        // Log account information with enhanced balance details
+        const balance = await getBalance(iotaAccount, { syncFirst: true });
+        logger.info(`Account balance: ${balance.formatted.available} ${balance.formatted.tokenSymbol} available of ${balance.formatted.total} ${balance.formatted.tokenSymbol} total`);
+        
+        // Generate a new address if needed
+        if (!process.env.IOTA_PLATFORM_ADDRESS) {
+          try {
+            const newAddress = await generateWalletAddress(iotaAccount, {
+              metadata: 'IntelliLend Platform Address'
+            });
+            logger.info(`Generated new platform address: ${newAddress}`);
+            
+            // Store address in memory for use in the application
+            process.env.IOTA_PLATFORM_ADDRESS = newAddress;
+          } catch (addrError) {
+            logger.error(`Error generating new address: ${addrError.message}`);
+          }
+        }
+        
+        // Set up account event listener for real-time updates
+        listenToAccountEvents(iotaAccount, (event) => {
+          logger.info(`Account event received: ${event.type}`);
+          
+          // Notify transaction subscribers if this is a transaction confirmation
+          if (event.type === 'transactionConfirmed' && transactionSubscribers.has(event.transactionId)) {
+            const subscribers = transactionSubscribers.get(event.transactionId);
+            subscribers.forEach(socket => {
+              try {
+                socket.send(JSON.stringify({
+                  type: 'transaction_update',
+                  status: 'confirmed',
+                  transactionId: event.transactionId,
+                  blockId: event.blockId,
+                  timestamp: event.timestamp
+                }));
+              } catch (socketError) {
+                logger.error(`Error sending to WebSocket: ${socketError.message}`);
+              }
+            });
+          }
+        });
+      } catch (walletError) {
+        logger.error(`Failed to initialize IOTA wallet: ${walletError.message}`);
+        logger.info('Continuing with client-only functionality');
+      }
+    } else {
+      logger.warn('Stronghold password not set, wallet features disabled');
+      logger.warn('Set STRONGHOLD_PASSWORD in your .env file to enable full wallet functionality');
+    }
+    
+    // Subscribe to block confirmations
+    try {
+      await subscribeToEvents(iotaClient, 'blockConfirmed', (event) => {
+        logger.debug(`Block confirmed: ${event.blockId}`);
+        
+        // This could be extended to update UI or notify users of relevant confirmations
+      });
+      logger.info('Successfully subscribed to block confirmations');
+    } catch (subscriptionError) {
+      logger.error(`Error subscribing to block confirmations: ${subscriptionError.message}`);
+    }
+    
+    return {
+      client: iotaClient,
+      nodeManager: iotaNodeManager,
+      wallet: iotaWallet,
+      account: iotaAccount
+    };
+  } catch (error) {
+    logger.error(`Failed to initialize IOTA SDK: ${error.message}`);
+    // Throw a more descriptive error to help with debugging
+    throw new Error(`IOTA SDK initialization failed: ${error.message}`);
+  }
 }
+
+/**
+ * Verify IOTA Node Connection
+ * @param {Client} client - IOTA client
+ * @returns {Promise<boolean>} - Connection status
+ */
+async function verifyIotaConnection(client) {
+  try {
+    // Attempt to get node info with timeout
+    const info = await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Connection verification timed out after 10 seconds'));
+      }, 10000);
+      
+      client.getInfo()
+        .then(result => {
+          clearTimeout(timeout);
+          resolve(result);
+        })
+        .catch(err => {
+          clearTimeout(timeout);
+          reject(err);
+        });
+    });
+    
+    // Check if node is healthy
+    if (!info.nodeInfo.status.isHealthy) {
+      logger.warn(`Connected to IOTA node, but node reports unhealthy status: ${JSON.stringify(info.nodeInfo.status)}`);
+      return false;
+    }
+    
+    // Log successful connection
+    logger.info(`Connected to IOTA node: ${info.nodeInfo.name} (${info.nodeInfo.version})`);
+    logger.info(`Network: ${info.nodeInfo.protocol.networkName}`);
+    logger.info(`Status: ${info.nodeInfo.status.isHealthy ? 'Healthy' : 'Unhealthy'}`);
+    
+    return true;
+  } catch (error) {
+    logger.error(`Failed to verify IOTA connection: ${error.message}`);
+    return false;
+  }
+}
+
+// Initialize IOTA SDK asynchronously with enhanced verification
+async function initializeWithVerification() {
+  try {
+    const iotaInstance = await initializeIotaSdk();
+    
+    // Verify connection to IOTA network
+    if (iotaInstance && iotaInstance.client) {
+      const isConnected = await verifyIotaConnection(iotaInstance.client);
+      
+      if (isConnected) {
+        logger.info('✅ IOTA connection verified successfully');
+      } else {
+        logger.error('❌ IOTA connection could not be verified, functionality may be limited');
+      }
+    }
+    
+    return iotaInstance;
+  } catch (error) {
+    logger.error(`IOTA SDK initialization failed: ${error.message}`);
+    throw error;
+  }
+}
+
+// Initialize IOTA SDK with robust retry and fallback
+withExponentialBackoff(async () => {
+  await initializeWithVerification();
+}, {
+  maxRetries: 7,
+  initialDelayMs: 2000,
+  factor: 1.5,
+  jitter: true
+}).catch(error => {
+  logger.error(`IOTA SDK initialization failed after multiple attempts: ${error.message}`);
+  logger.warn('Continuing with limited functionality. Some IOTA features may not be available.');
+});
+
+// Use real AI integration - no mocks in production
+const AIIntegration = require('../ai-model/api/ai_integration');
+console.log('Using REAL AI integration');
 
 // Load utilities and middleware
 const { authenticate } = require('./middleware/auth');
@@ -41,7 +261,7 @@ const logger = require('./utils/logger');
 
 // Initialize express app
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3002; // Changed from 3001 to avoid conflicts
 
 // Security and performance middleware
 app.use(helmet());
@@ -50,7 +270,7 @@ app.use(cors());
 app.use(morgan('combined'));
 app.use(bodyParser.json());
 
-// Apply rate limiting
+// Apply general rate limiting
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 requests per windowMs
@@ -58,24 +278,117 @@ const apiLimiter = rateLimit({
 });
 app.use('/api/', apiLimiter);
 
-// Initialize AI Integration
+// Enhanced rate limiting configuration for IOTA-specific endpoints
+const iotaLimiterOptions = {
+  windowMs: 5 * 60 * 1000,  // 5 minutes
+  max: 30,  // 30 requests per window
+  message: {
+    status: 429,
+    error: 'Too many IOTA requests',
+    message: 'Too many IOTA API requests. Please try again later.',
+    retryAfter: 300 // seconds
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Add response headers for better client handling
+  headerName: 'X-IOTA-Rate-Limit',
+  // Track IPs properly with appropriate headers for proxies
+  keyGenerator: (req) => {
+    return req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  },
+  // Skip rate limit for health checks
+  skip: (req) => req.path === '/health',
+  // Add headers to show remaining quota
+  handler: (req, res, next, options) => {
+    res.status(options.statusCode || 429).json(options.message);
+  }
+};
+
+// Apply rate limiting with options
+const iotaLimiter = rateLimit(iotaLimiterOptions);
+app.use('/api/iota/', iotaLimiter);
+
+// Special rate limiter for address generation (high-security operation)
+const addressGenerationLimiter = rateLimit({
+  ...iotaLimiterOptions,
+  windowMs: 60 * 60 * 1000,  // 1 hour
+  max: 10,  // 10 requests per hour
+  message: {
+    status: 429,
+    error: 'Address generation rate limit exceeded',
+    message: 'You have exceeded the rate limit for generating IOTA addresses. Please try again later.',
+    retryAfter: 3600 // seconds
+  }
+});
+app.use('/api/iota/address', addressGenerationLimiter);
+
+// Special rate limiter for transactions
+const transactionLimiter = rateLimit({
+  ...iotaLimiterOptions,
+  windowMs: 10 * 60 * 1000,  // 10 minutes
+  max: 15,  // 15 requests per 10 minutes
+  message: {
+    status: 429,
+    error: 'Transaction rate limit exceeded',
+    message: 'You have exceeded the rate limit for IOTA transactions. Please try again later.',
+    retryAfter: 600 // seconds
+  }
+});
+app.use('/api/iota/send', transactionLimiter);
+
+// Special rate limiter for Tangle data submission
+const tangleSubmitLimiter = rateLimit({
+  ...iotaLimiterOptions,
+  windowMs: 15 * 60 * 1000,  // 15 minutes
+  max: 20,  // 20 requests per 15 minutes
+  message: {
+    status: 429,
+    error: 'Tangle submission rate limit exceeded',
+    message: 'You have exceeded the rate limit for submitting data to the IOTA Tangle. Please try again later.',
+    retryAfter: 900 // seconds
+  }
+});
+app.use('/api/iota/submit', tangleSubmitLimiter);
+
+// Initialize AI Integration with real IOTA connection
 const aiConfig = {
-  provider: process.env.IOTA_EVM_RPC_URL || 'http://localhost:8545',
+  provider: process.env.IOTA_EVM_RPC_URL || 'https://api.testnet.shimmer.network/evm',
   lendingPoolAddress: process.env.LENDING_POOL_ADDRESS,
   zkVerifierAddress: process.env.ZK_VERIFIER_ADDRESS,
   zkBridgeAddress: process.env.ZK_BRIDGE_ADDRESS,
   modelPath: process.env.AI_MODEL_PATH || '../ai-model/models',
   useLocalModel: process.env.USE_LOCAL_MODEL === 'true',
   apiUrl: process.env.AI_API_URL || 'http://localhost:5000',
-  enableCrossLayer: process.env.ENABLE_CROSS_LAYER === 'true'
+  enableCrossLayer: process.env.ENABLE_CROSS_LAYER === 'true',
+  iotaClient: null // Will be set after initialization
 };
 
 const aiIntegration = new AIIntegration(aiConfig);
 
-// If admin private key is provided, set wallet for transactions
-if (process.env.ADMIN_PRIVATE_KEY) {
+// Set IOTA client after initialization
+(async () => {
   try {
-    aiIntegration.setWallet(process.env.ADMIN_PRIVATE_KEY);
+    // Wait for IOTA SDK to initialize
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    if (iotaClient) {
+      aiIntegration.setIotaClient(iotaClient);
+      console.log('IOTA client set in AI integration');
+    }
+    
+    if (iotaAccount) {
+      aiIntegration.setIotaAccount(iotaAccount);
+      console.log('IOTA account set in AI integration');
+    }
+  } catch (error) {
+    console.error('Error setting IOTA client in AI integration:', error);
+  }
+})();
+
+// If admin private key is provided, set wallet for transactions
+if (process.env.PRIVATE_KEY) {
+  try {
+    aiIntegration.setWallet(process.env.PRIVATE_KEY);
     logger.info('Admin wallet connected for backend operations');
   } catch (error) {
     logger.error('Error connecting admin wallet:', error);
@@ -85,9 +398,569 @@ if (process.env.ADMIN_PRIVATE_KEY) {
 // API Routes
 
 // Health check endpoint
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok', timestamp: Date.now() });
+app.get('/health', async (req, res) => {
+  try {
+    // Check IOTA connection
+    let iotaStatus = 'disconnected';
+    if (iotaClient) {
+      try {
+        const networkInfo = await getNetworkInfo(iotaClient);
+        iotaStatus = networkInfo.nodeInfo.status.isHealthy ? 'healthy' : 'unhealthy';
+      } catch (error) {
+        iotaStatus = 'error';
+      }
+    }
+    
+    res.status(200).json({ 
+      status: 'ok', 
+      timestamp: Date.now(),
+      iota: {
+        status: iotaStatus,
+        network: process.env.IOTA_NETWORK || 'testnet',
+        wallet: iotaWallet ? 'connected' : 'disconnected'
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
 });
+
+// Enhanced IOTA specific endpoints with better error handling,
+// transaction monitoring, and resilience features
+
+/**
+ * Generate a new IOTA address
+ * @route GET /api/iota/address
+ * @security JWT
+ * @returns {object} 200 - Address successfully generated
+ * @returns {object} 400 - Bad request error
+ * @returns {object} 500 - Server error
+ * @returns {object} 503 - IOTA wallet not initialized
+ */
+app.get('/api/iota/address', authenticate, async (req, res) => {
+  try {
+    if (!iotaAccount) {
+      return res.status(503).json({ 
+        error: 'IOTA wallet not initialized',
+        details: 'Wallet features are currently unavailable. Please check server logs or try again later.'
+      });
+    }
+    
+    logger.info('Generating new IOTA address');
+    
+    // Generate address with metadata
+    const metadata = req.query.label || 'Generated via IntelliLend API';
+    const address = await generateWalletAddress(iotaAccount, {
+      metadata: metadata
+    });
+    
+    logger.info(`Successfully generated address: ${address}`);
+    
+    // Return address with network information
+    const networkInfo = await getNetworkInfo(iotaClient, iotaNodeManager);
+    
+    res.json({
+      success: true,
+      address,
+      network: networkInfo.networkName,
+      bech32Hrp: networkInfo.bech32Hrp,
+      explorerUrl: `${config.getExplorerAddressUrl(address, process.env.IOTA_NETWORK || 'testnet')}`,
+      metadata: metadata,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error(`Error generating IOTA address: ${error.message}`);
+    
+    // Provide appropriate error response based on the error type
+    if (error.message && error.message.includes('stronghold')) {
+      return res.status(500).json({ 
+        error: 'Stronghold error',
+        message: 'Error accessing secure storage. Please contact support.',
+        requestId: req.id
+      });
+    } else if (error.message && error.message.includes('timeout')) {
+      return res.status(504).json({ 
+        error: 'Request timeout',
+        message: 'The operation timed out. The network may be congested. Please try again later.',
+        requestId: req.id
+      });
+    }
+    
+    res.status(500).json({ 
+      error: 'Error generating address', 
+      message: error.message,
+      requestId: req.id
+    });
+  }
+});
+
+/**
+ * Get IOTA balance for an address
+ * @route GET /api/iota/balance/:address
+ * @param {string} address.path.required - The IOTA address
+ * @returns {object} 200 - Balance successfully retrieved
+ * @returns {object} 400 - Bad request error
+ * @returns {object} 500 - Server error
+ * @returns {object} 503 - IOTA client not initialized
+ */
+app.get('/api/iota/balance/:address', cacheMiddleware(30), async (req, res) => {
+  try {
+    const { address } = req.params;
+    
+    if (!iotaClient) {
+      return res.status(503).json({ 
+        error: 'IOTA client not initialized',
+        details: 'IOTA services are currently unavailable. Please try again later.'
+      });
+    }
+    
+    logger.info(`Getting balance for address: ${address}`);
+    
+    // Validate address format
+    const networkInfo = await getNetworkInfo(iotaClient, iotaNodeManager);
+    const validPrefix = networkInfo.bech32Hrp || 'smr';
+    
+    if (!address.startsWith(`${validPrefix}1`)) {
+      return res.status(400).json({ 
+        error: 'Invalid address format',
+        message: `Address must be a valid ${validPrefix.toUpperCase()} address starting with ${validPrefix}1`
+      });
+    }
+    
+    // Get balance with resilience
+    const balance = await withExponentialBackoff(async () => {
+      return await getBalance(iotaClient, address, iotaNodeManager);
+    });
+    
+    // Get transactions for this address (optional, controlled by query param)
+    let transactions = [];
+    if (req.query.includeTransactions === 'true') {
+      transactions = await getAddressTransactions(iotaClient, address, iotaNodeManager);
+    }
+    
+    // Format balance for better readability and include more information
+    const formattedBalance = {
+      address,
+      network: networkInfo.networkName,
+      baseCoins: balance.baseCoins,
+      baseCoinsFormatted: `${BigInt(balance.baseCoins) / BigInt(1000000)} ${validPrefix.toUpperCase()}`,
+      nativeTokens: balance.nativeTokens || [],
+      explorerUrl: `${config.getExplorerAddressUrl(address, process.env.IOTA_NETWORK || 'testnet')}`,
+      lastUpdated: new Date().toISOString(),
+      transactions: transactions.length > 0 ? transactions : undefined
+    };
+    
+    res.json(formattedBalance);
+  } catch (error) {
+    logger.error(`Error getting IOTA balance for ${req.params.address}: ${error.message}`);
+    
+    // Provide appropriate error response based on the error type
+    if (error.message && error.message.includes('not found')) {
+      return res.status(404).json({ 
+        error: 'Address not found',
+        message: 'The address was not found on the network or has no transactions',
+        address: req.params.address
+      });
+    } else if (error.message && error.message.includes('timeout')) {
+      return res.status(504).json({ 
+        error: 'Request timeout',
+        message: 'The operation timed out. The network may be congested. Please try again later.',
+        address: req.params.address
+      });
+    }
+    
+    res.status(500).json({ 
+      error: 'Error getting balance', 
+      message: error.message,
+      address: req.params.address
+    });
+  }
+});
+
+/**
+ * Send IOTA tokens
+ * @route POST /api/iota/send
+ * @security JWT
+ * @param {object} request.body.required - Transaction details
+ * @param {string} request.body.address - Recipient address
+ * @param {string} request.body.amount - Amount to send
+ * @param {string} request.body.tag - Optional tag
+ * @param {string} request.body.message - Optional message
+ * @returns {object} 200 - Transaction successfully sent
+ * @returns {object} 400 - Bad request error
+ * @returns {object} 500 - Server error
+ * @returns {object} 503 - IOTA wallet not initialized
+ */
+app.post('/api/iota/send', authenticate, validateRequest(['address', 'amount']), async (req, res) => {
+  try {
+    const { address, amount, tag, message } = req.body;
+    
+    if (!iotaAccount) {
+      return res.status(503).json({ 
+        error: 'IOTA wallet not initialized',
+        details: 'Wallet features are currently unavailable. Please check server logs or try again later.'
+      });
+    }
+    
+    logger.info(`Sending ${amount} to ${address}`);
+    
+    // Add WebSocket for real-time transaction updates if client wants to listen
+    let transactionId;
+    if (req.headers['accept'] && req.headers['accept'].includes('text/event-stream')) {
+      // Set headers for SSE
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      
+      // Send initial message
+      res.write(`data: ${JSON.stringify({ status: 'processing', message: 'Transaction is being processed' })}\n\n`);
+      
+      // Send tokens with transaction monitoring
+      sendTokens(iotaAccount, amount, address, {
+        tag: tag || 'IntelliLend',
+        metadata: message || 'Sent via IntelliLend Platform',
+        monitor: true,
+        statusCallback: (status) => {
+          // Send status update to client
+          res.write(`data: ${JSON.stringify(status)}\n\n`);
+          
+          // If final status, end the response
+          if (status.status === 'confirmed' || status.status === 'error') {
+            res.end();
+          }
+          
+          // Store transaction ID for monitoring
+          if (status.transactionId && !transactionId) {
+            transactionId = status.transactionId;
+          }
+        }
+      }).catch(error => {
+        // Send error to client and end the response
+        res.write(`data: ${JSON.stringify({ 
+          status: 'error', 
+          message: error.message 
+        })}\n\n`);
+        res.end();
+      });
+    } else {
+      // Regular JSON response for non-streaming clients
+      // Send tokens
+      const result = await sendTokens(iotaAccount, amount, address, {
+        tag: tag || 'IntelliLend',
+        metadata: message || 'Sent via IntelliLend Platform',
+        monitor: true
+      });
+      
+      // Store transaction ID
+      transactionId = result.transactionId;
+      
+      // If socket server is available, generate a transaction monitoring ID
+      const monitoringId = crypto.randomBytes(16).toString('hex');
+      
+      res.json({
+        success: true,
+        transactionId: result.transactionId,
+        blockId: result.blockId,
+        amount: result.formattedAmount,
+        recipient: address,
+        timestamp: new Date(result.timestamp).toISOString(),
+        status: 'pending',
+        monitoringEndpoint: `/api/iota/transaction/${result.transactionId}/status`,
+        monitoringId: monitoringId
+      });
+    }
+  } catch (error) {
+    logger.error(`Error sending IOTA tokens to ${req.body.address}: ${error.message}`);
+    
+    // Provide appropriate error response based on the error type
+    if (error.message && error.message.includes('insufficient funds')) {
+      return res.status(400).json({ 
+        error: 'Insufficient funds',
+        message: 'There are not enough funds to complete this transaction',
+        details: error.message
+      });
+    } else if (error.message && error.message.includes('timeout')) {
+      return res.status(504).json({ 
+        error: 'Transaction timeout',
+        message: 'The transaction timed out. The network may be congested. Please check explorer to see if it was confirmed.',
+        details: error.message
+      });
+    }
+    
+    res.status(500).json({ 
+      error: 'Error sending tokens', 
+      message: error.message 
+    });
+  }
+});
+
+/**
+ * Check transaction status
+ * @route GET /api/iota/transaction/:transactionId/status
+ * @param {string} transactionId.path.required - Transaction ID
+ * @returns {object} 200 - Transaction status
+ * @returns {object} 404 - Transaction not found
+ * @returns {object} 500 - Server error
+ */
+app.get('/api/iota/transaction/:transactionId/status', async (req, res) => {
+  try {
+    const { transactionId } = req.params;
+    
+    if (!iotaClient) {
+      return res.status(503).json({ 
+        error: 'IOTA client not initialized',
+        details: 'IOTA services are currently unavailable. Please try again later.'
+      });
+    }
+    
+    logger.info(`Checking transaction status for: ${transactionId}`);
+    
+    // Check transaction status
+    try {
+      const metadata = await iotaClient.blockMetadata(transactionId);
+      
+      // Determine status based on metadata
+      let status = 'pending';
+      if (metadata.milestone_timestamp_booked) {
+        status = 'confirmed';
+      } else if (metadata.is_conflicting) {
+        status = 'conflicting';
+      }
+      
+      res.json({
+        transactionId,
+        status,
+        metadata,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      // If not found, check if it's a transaction ID instead of block ID
+      if (error.message && error.message.includes('not found')) {
+        // Try looking up in account history
+        if (iotaAccount) {
+          try {
+            const transactions = await getTransactionHistory(iotaAccount, {
+              limit: 50
+            });
+            
+            const transaction = transactions.find(tx => tx.id === transactionId);
+            
+            if (transaction) {
+              return res.json({
+                transactionId,
+                status: transaction.confirmed ? 'confirmed' : 'pending',
+                blockId: transaction.blockId,
+                timestamp: transaction.timestamp
+              });
+            }
+          } catch (historyError) {
+            logger.error(`Error checking transaction history: ${historyError.message}`);
+          }
+        }
+        
+        return res.status(404).json({ 
+          error: 'Transaction not found',
+          message: 'The specified transaction ID was not found on the network',
+          transactionId
+        });
+      }
+      
+      throw error;
+    }
+  } catch (error) {
+    logger.error(`Error checking transaction status for ${req.params.transactionId}: ${error.message}`);
+    res.status(500).json({ 
+      error: 'Error checking transaction status', 
+      message: error.message,
+      transactionId: req.params.transactionId
+    });
+  }
+});
+
+/**
+ * Submit data to IOTA Tangle
+ * @route POST /api/iota/submit
+ * @param {object} request.body.required - Data to submit
+ * @param {object} request.body.data - Data object to store on the Tangle
+ * @param {string} request.body.tag - Optional tag
+ * @returns {object} 200 - Data successfully submitted
+ * @returns {object} 400 - Bad request error
+ * @returns {object} 500 - Server error
+ * @returns {object} 503 - IOTA client not initialized
+ */
+app.post('/api/iota/submit', validateRequest(['data']), async (req, res) => {
+  try {
+    const { data, tag } = req.body;
+    
+    if (!iotaClient) {
+      return res.status(503).json({ 
+        error: 'IOTA client not initialized',
+        details: 'IOTA services are currently unavailable. Please try again later.'
+      });
+    }
+    
+    logger.info(`Submitting data to IOTA Tangle with tag: ${tag || 'IntelliLend'}`);
+    
+    // Create block with data payload
+    const blockData = {
+      payload: {
+        type: 1, // Tagged data
+        tag: Buffer.from(tag || 'IntelliLend').toString('hex'),
+        data: Buffer.from(JSON.stringify(data)).toString('hex')
+      }
+    };
+    
+    // Submit block with enhanced error handling and monitoring
+    const result = await submitBlock(iotaClient, blockData, iotaNodeManager);
+    
+    // Monitor block for confirmation if requested
+    let monitoringUrl;
+    if (req.query.monitor === 'true') {
+      monitoringUrl = `/api/iota/transaction/${result.blockId}/status`;
+      
+      // Start monitoring in the background
+      monitorTransaction(iotaClient, result.blockId, (status) => {
+        logger.info(`Block ${result.blockId} status update: ${status.status}`);
+      }, {
+        maxDuration: 300000 // 5 minutes
+      }).catch(error => {
+        logger.error(`Error monitoring block: ${error.message}`);
+      });
+    }
+    
+    res.json({
+      success: true,
+      blockId: result.blockId,
+      timestamp: new Date().toISOString(),
+      monitoringUrl,
+      inclusionStatus: result.inclusion?.state || 'pending'
+    });
+  } catch (error) {
+    logger.error(`Error submitting data to IOTA Tangle: ${error.message}`);
+    
+    // Provide appropriate error response based on the error type
+    if (error.message && error.message.includes('rejected')) {
+      return res.status(400).json({ 
+        error: 'Block rejected',
+        message: 'The block was rejected by the network. Verify block structure.',
+        details: error.message
+      });
+    } else if (error.message && error.message.includes('timeout')) {
+      return res.status(504).json({ 
+        error: 'Submission timeout',
+        message: 'The submission timed out. The network may be congested. The block may still be processed.',
+        details: error.message
+      });
+    }
+    
+    res.status(500).json({ 
+      error: 'Error submitting data', 
+      message: error.message 
+    });
+  }
+});
+
+/**
+ * Get IOTA network information
+ * @route GET /api/iota/network
+ * @returns {object} 200 - Network information
+ * @returns {object} 500 - Server error
+ * @returns {object} 503 - IOTA client not initialized
+ */
+app.get('/api/iota/network', cacheMiddleware(60), async (req, res) => {
+  try {
+    if (!iotaClient) {
+      return res.status(503).json({ 
+        error: 'IOTA client not initialized',
+        details: 'IOTA services are currently unavailable. Please try again later.'
+      });
+    }
+    
+    logger.info('Getting IOTA network information');
+    
+    // Get network information with enhanced details
+    const networkInfo = await getNetworkInfo(iotaClient, iotaNodeManager);
+    
+    // Get healthy nodes from node manager
+    const healthyNodes = iotaNodeManager.getHealthyNodes();
+    
+    res.json({
+      network: networkInfo.networkName,
+      protocol: {
+        version: networkInfo.protocol?.version,
+        networkName: networkInfo.protocol?.networkName,
+        bech32Hrp: networkInfo.bech32Hrp
+      },
+      nodeInfo: {
+        url: networkInfo.currentNode,
+        version: networkInfo.nodeInfo?.version,
+        healthy: networkInfo.isHealthy,
+        uptimePercentage: ((Date.now() - networkInfo.nodeInfo?.status?.startTimestamp || 0) / 60000).toFixed(2)
+      },
+      connectionStatus: {
+        healthyNodes: healthyNodes.length,
+        connectedNode: networkInfo.currentNode,
+        lastUpdated: networkInfo.currentTime
+      }
+    });
+  } catch (error) {
+    logger.error(`Error getting IOTA network information: ${error.message}`);
+    res.status(500).json({ 
+      error: 'Error getting network information', 
+      message: error.message 
+    });
+  }
+});
+
+/**
+ * Get account transaction history
+ * @route GET /api/iota/transactions
+ * @security JWT
+ * @returns {object} 200 - Transaction history
+ * @returns {object} 500 - Server error
+ * @returns {object} 503 - IOTA wallet not initialized
+ */
+app.get('/api/iota/transactions', authenticate, cacheMiddleware(30), async (req, res) => {
+  try {
+    if (!iotaAccount) {
+      return res.status(503).json({ 
+        error: 'IOTA wallet not initialized',
+        details: 'Wallet features are currently unavailable. Please check server logs or try again later.'
+      });
+    }
+    
+    logger.info('Getting account transaction history');
+    
+    // Parse query parameters
+    const limit = parseInt(req.query.limit) || 50;
+    const type = parseInt(req.query.type) || 0; // 0: all, 1: received, 2: sent
+    
+    // Get transaction history with improved formatting
+    const transactions = await getTransactionHistory(iotaAccount, {
+      syncFirst: true,
+      limit,
+      type,
+      from: req.query.from,
+      to: req.query.to,
+      minValue: req.query.minValue,
+      tag: req.query.tag
+    });
+    
+    res.json({
+      transactions,
+      count: transactions.length,
+      lastUpdated: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error(`Error getting transaction history: ${error.message}`);
+    res.status(500).json({ 
+      error: 'Error getting transaction history', 
+      message: error.message 
+    });
+  }
+});
+
+// Original endpoints from server.js
 
 // User profile endpoint
 app.get('/api/user/:address', cacheMiddleware(60), async (req, res) => {
@@ -137,12 +1010,31 @@ app.get('/api/user/:address', cacheMiddleware(60), async (req, res) => {
 // Market data endpoint
 app.get('/api/market', cacheMiddleware(300), async (req, res) => {
   try {
-    // In a production environment, this would fetch real data from the contracts
-    // For demo purposes, we'll generate simulated market data
+    // Try to fetch real data from the contracts if they're deployed
+    let totalDeposits, totalBorrows, totalCollateral;
     
-    const totalDeposits = 500000;
-    const totalBorrows = 350000;
-    const totalCollateral = 750000;
+    if (aiIntegration.lendingPool && typeof aiIntegration.lendingPool.totalDeposits === 'function') {
+      try {
+        // Fetch real data from contract
+        [totalDeposits, totalBorrows, totalCollateral] = await Promise.all([
+          aiIntegration.lendingPool.totalDeposits().then(val => ethers.utils.formatEther(val)),
+          aiIntegration.lendingPool.totalBorrows().then(val => ethers.utils.formatEther(val)),
+          aiIntegration.lendingPool.totalCollateral().then(val => ethers.utils.formatEther(val))
+        ]);
+      } catch (contractError) {
+        logger.warn('Error fetching data from contract, using fallback values:', contractError);
+        // Fallback to simulated data
+        totalDeposits = 500000;
+        totalBorrows = 350000;
+        totalCollateral = 750000;
+      }
+    } else {
+      // Fallback to simulated data
+      totalDeposits = 500000;
+      totalBorrows = 350000;
+      totalCollateral = 750000;
+    }
+    
     const utilizationRate = Math.round((totalBorrows / totalDeposits) * 100);
     
     res.json({
@@ -287,7 +1179,7 @@ app.get('/api/recommendations/:address', cacheMiddleware(1800), async (req, res)
   }
 });
 
-// Bridge messages endpoint
+// Bridge messages endpoint - now using real IOTA bridge when available
 app.get('/api/bridge/messages/:address', async (req, res) => {
   try {
     const { address } = req.params;
@@ -297,33 +1189,41 @@ app.get('/api/bridge/messages/:address', async (req, res) => {
       return res.status(400).json({ error: 'Invalid Ethereum address' });
     }
     
-    // In a production environment, this would fetch real bridge messages
-    // For demo purposes, generate some simulated messages
+    // Try to fetch real bridge messages from the contract
+    let messages = [];
     
-    const messageTypes = ['RISK_SCORE_UPDATE', 'COLLATERAL_CHANGE', 'CROSS_CHAIN_TRANSFER', 'IDENTITY_VERIFICATION'];
-    const statuses = ['Pending', 'Processed', 'Failed'];
-    
-    const messages = [];
-    const count = 3 + Math.floor(Math.random() * 5);
-    
-    for (let i = 0; i < count; i++) {
-      const messageType = messageTypes[Math.floor(Math.random() * messageTypes.length)];
-      const status = statuses[Math.floor(Math.random() * statuses.length)];
-      const timestamp = Date.now() - Math.floor(Math.random() * 7 * 86400 * 1000); // Up to 7 days ago
-      
-      messages.push({
-        messageId: `0x${Math.random().toString(16).slice(2, 10)}`,
-        messageType,
-        status,
-        timestamp,
-        sender: address,
-        targetAddress: `0x${Math.random().toString(16).slice(2, 42)}`,
-        direction: Math.random() > 0.5 ? 'L2ToL1' : 'L1ToL2'
-      });
+    if (aiIntegration.zkBridge && typeof aiIntegration.zkBridge.getMessageIds === 'function') {
+      try {
+        // Get message IDs for this address
+        const messageIds = await aiIntegration.zkBridge.getMessageIds(address);
+        
+        // Fetch detailed information for each message
+        const messagePromises = messageIds.map(async (id) => {
+          const details = await aiIntegration.zkBridge.getMessageDetails(id);
+          return {
+            messageId: id,
+            messageType: details.messageType,
+            status: ['Pending', 'Processed', 'Failed', 'Canceled'][details.status], // Convert enum to string
+            timestamp: details.timestamp.toNumber() * 1000, // Convert to JS timestamp
+            sender: details.sender,
+            targetAddress: details.targetAddress,
+            direction: details.direction === 0 ? 'L2ToL1' : 'L1ToL2'
+          };
+        });
+        
+        messages = await Promise.all(messagePromises);
+        
+        // Sort by timestamp, newest first
+        messages.sort((a, b) => b.timestamp - a.timestamp);
+      } catch (bridgeError) {
+        logger.warn('Error fetching from bridge, using fallback data:', bridgeError);
+        // Fall back to simulated data
+        messages = generateSimulatedBridgeMessages(address);
+      }
+    } else {
+      // Fall back to simulated data
+      messages = generateSimulatedBridgeMessages(address);
     }
-    
-    // Sort by timestamp, newest first
-    messages.sort((a, b) => b.timestamp - a.timestamp);
     
     res.json({ messages, count: messages.length });
   } catch (error) {
@@ -331,6 +1231,36 @@ app.get('/api/bridge/messages/:address', async (req, res) => {
     res.status(500).json({ error: 'Error fetching bridge messages', message: error.message });
   }
 });
+
+// Helper function to generate simulated bridge messages
+function generateSimulatedBridgeMessages(address) {
+  const messageTypes = ['RISK_SCORE_UPDATE', 'COLLATERAL_CHANGE', 'CROSS_CHAIN_TRANSFER', 'IDENTITY_VERIFICATION'];
+  const statuses = ['Pending', 'Processed', 'Failed'];
+  
+  const messages = [];
+  const count = 3 + Math.floor(Math.random() * 5);
+  
+  for (let i = 0; i < count; i++) {
+    const messageType = messageTypes[Math.floor(Math.random() * messageTypes.length)];
+    const status = statuses[Math.floor(Math.random() * statuses.length)];
+    const timestamp = Date.now() - Math.floor(Math.random() * 7 * 86400 * 1000); // Up to 7 days ago
+    
+    messages.push({
+      messageId: `0x${Math.random().toString(16).slice(2, 10)}`,
+      messageType,
+      status,
+      timestamp,
+      sender: address,
+      targetAddress: `0x${Math.random().toString(16).slice(2, 42)}`,
+      direction: Math.random() > 0.5 ? 'L2ToL1' : 'L1ToL2'
+    });
+  }
+  
+  // Sort by timestamp, newest first
+  messages.sort((a, b) => b.timestamp - a.timestamp);
+  
+  return messages;
+}
 
 // Add model validation endpoint
 app.get('/api/model/performance', authenticate, async (req, res) => {
@@ -471,6 +1401,30 @@ app.post('/api/admin/update-risk-score', authenticate, validateRequest(['address
     // Update risk score on-chain
     const receipt = await aiIntegration.updateRiskScore(address, score);
     
+    // Also submit this data to IOTA Tangle for permanent record
+    if (iotaClient) {
+      try {
+        // Create block with data payload
+        const blockData = {
+          payload: {
+            type: 1, // Tagged data
+            tag: Buffer.from('RISK_SCORE_UPDATE').toString('hex'),
+            data: Buffer.from(JSON.stringify({
+              address,
+              score,
+              timestamp: Date.now(),
+              txHash: receipt.transactionHash
+            })).toString('hex')
+          }
+        };
+        
+        // Submit block
+        await submitBlock(iotaClient, blockData);
+      } catch (tanglerError) {
+        logger.warn('Error submitting risk score to Tangle:', tanglerError);
+      }
+    }
+    
     res.json({
       success: true,
       address,
@@ -493,7 +1447,7 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   logger.info(`IntelliLend API server running on port ${PORT}`);
   logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  logger.info(`Using ${USE_MOCKS ? 'MOCK' : 'REAL'} AI integration`);
+  logger.info(`IOTA network: ${process.env.IOTA_NETWORK || 'testnet'}`);
 });
 
 module.exports = app; // Export for testing

@@ -21,7 +21,8 @@
   },
   "dependencies": {
     "@chainlink/contracts": "^0.5.1",
-    "@iota/sdk": "^1.1.6",
+    "@iota/sdk": "^1.1.5",
+    "@iota/identity-wasm": "^1.0.0",
     "@openzeppelin/contracts": "^4.8.0",
     "axios": "^1.2.2",
     "chalk": "^4.1.2",

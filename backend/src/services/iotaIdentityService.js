@@ -16,20 +16,42 @@ class IOTAIdentityService {
   }
 
   /**
-   * Initialize the IOTA Identity client
+   * Initialize the IOTA Identity client with robust error handling
    */
   async initialize() {
     try {
-      // Initialize Identity client
-      this.client = new Identity.Client({
+      logger.info('Initializing IOTA Identity Service');
+      
+      // Check if identity wasm is available
+      if (!Identity || !DID || !VerifiableCredential || !Resolver) {
+        throw new Error('IOTA Identity WASM modules not properly loaded. Check dependencies.');
+      }
+      
+      // Enhanced Identity client with retry mechanism
+      this.client = await this.initializeWithRetry(() => {
+        return new Identity.Client({
+          node: config.identity.didNetworkUrl,
+          network: config.identity.didMethod,
+          // Add additional options for better resilience
+          powProvider: 'local', // Use local proof of work
+          timeout: 30000, // 30 second timeout
+          retries: 3 // Retry API calls 3 times
+        });
+      }, 5); // 5 retry attempts
+      
+      // Initialize DID resolver with fallback nodes
+      this.resolver = new Resolver.Resolver({
         node: config.identity.didNetworkUrl,
-        network: config.identity.didMethod
+        // Add fallback nodes for resilience
+        nodes: config.identity.fallbackNodes || [],
+        resolverConfig: {
+          timeout: 30000, // 30 second timeout
+          retries: 3 // Retry resolution 3 times
+        }
       });
       
-      // Initialize DID resolver
-      this.resolver = new Resolver.Resolver({
-        node: config.identity.didNetworkUrl
-      });
+      // Verify the resolver is working
+      await this.verifyResolver();
       
       // Generate issuer DID if not already created (in production, this would be stored securely)
       if (!process.env.ISSUER_DID || !process.env.ISSUER_PRIVATE_KEY) {
@@ -38,13 +60,84 @@ class IOTAIdentityService {
       } else {
         this.issuerDID = process.env.ISSUER_DID;
         this.issuerPrivateKey = process.env.ISSUER_PRIVATE_KEY;
-        logger.info(`Using existing issuer DID: ${this.issuerDID}`);
+        
+        // Verify that the DID is resolvable
+        const isValid = await this.validateDID(this.issuerDID);
+        if (isValid) {
+          logger.info(`Using existing issuer DID: ${this.issuerDID} (validated)`);
+        } else {
+          logger.warn(`Existing issuer DID ${this.issuerDID} could not be validated. Creating a new one...`);
+          await this.generateIssuerDID();
+        }
       }
       
       logger.info('IOTA Identity Service initialized successfully');
     } catch (error) {
       logger.error(`Error initializing IOTA Identity Service: ${error.message}`);
+      logger.warn('Identity features will be limited or unavailable');
       throw error;
+    }
+  }
+
+  /**
+   * Initialize with retry for resilience
+   * @param {Function} initFunction - Function to initialize a component
+   * @param {number} maxRetries - Maximum number of retry attempts
+   * @returns {Promise<any>} The initialized component
+   */
+  async initializeWithRetry(initFunction, maxRetries = 3) {
+    let attempt = 0;
+    let lastError;
+    
+    while (attempt <= maxRetries) {
+      try {
+        return await initFunction();
+      } catch (error) {
+        lastError = error;
+        attempt++;
+        
+        if (attempt > maxRetries) {
+          break;
+        }
+        
+        // Exponential backoff with jitter
+        const delay = Math.floor(1000 * Math.pow(2, attempt) * (0.5 + Math.random() * 0.5));
+        logger.warn(`Attempt ${attempt}/${maxRetries} failed. Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+    
+    throw lastError;
+  }
+
+  /**
+   * Verify that the resolver is working correctly
+   */
+  async verifyResolver() {
+    try {
+      // Try to resolve a known DID
+      const testDID = process.env.TEST_DID || 'did:iota:test';
+      await this.resolver.resolve(testDID);
+      logger.info('DID resolver verification successful');
+      return true;
+    } catch (error) {
+      logger.warn(`DID resolver verification failed: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Validate a DID by attempting to resolve it
+   * @param {string} did - The DID to validate
+   * @returns {Promise<boolean>} Whether the DID is valid and resolvable
+   */
+  async validateDID(did) {
+    try {
+      await this.resolver.resolve(did);
+      return true;
+    } catch (error) {
+      logger.error(`Error validating DID ${did}: ${error.message}`);
+      return false;
     }
   }
 

@@ -1,0 +1,12 @@
+[package]
+name = "IntelliLend"
+version = "0.1.0"
+authors = ["IntelliLend"]
+
+[addresses]
+intellilend = "0x0"
+std = "0x1"
+iota_framework = "0x2"
+
+[dependencies]
+IOTAFramework = { git = "https://github.com/iotaledger/move.git", subdir = "iota_framework" }

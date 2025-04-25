@@ -1,4 +1,306 @@
 /**
+ * Comprehensive deployment script for IntelliLend IOTA integration
+ * 
+ * This script deploys all necessary components:
+ * 1. EVM Smart Contracts to IOTA Shimmer Testnet
+ * 2. Move modules to IOTA Layer 1
+ * 3. Updates configuration files with deployed addresses
+ */
+
+require('dotenv').config();
+const { ethers } = require('ethers');
+const fs = require('fs');
+const path = require('path');
+const { exec } = require('child_process');
+const readline = require('readline');
+
+// ANSI color codes for console output
+const colors = {
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  magenta: '\x1b[35m',
+  cyan: '\x1b[36m',
+  red: '\x1b[31m'
+};
+
+// Create interactive CLI
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout
+});
+
+// Prompt for input with colors
+function prompt(question) {
+  return new Promise((resolve) => {
+    rl.question(`${colors.bright}${colors.cyan}? ${question}${colors.reset} `, (answer) => {
+      resolve(answer);
+    });
+  });
+}
+
+// Log with colors
+function log(message, type = 'info') {
+  const timestamp = new Date().toISOString().slice(11, 19);
+  let prefix = '';
+  
+  switch (type) {
+    case 'success':
+      prefix = `${colors.bright}${colors.green}✓ `;
+      break;
+    case 'error':
+      prefix = `${colors.bright}${colors.red}✗ `;
+      break;
+    case 'warn':
+      prefix = `${colors.bright}${colors.yellow}⚠ `;
+      break;
+    case 'info':
+    default:
+      prefix = `${colors.bright}${colors.blue}ℹ `;
+  }
+  
+  console.log(`${prefix}[${timestamp}] ${message}${colors.reset}`);
+}
+
+// Execute a command and return its output
+function executeCommand(command) {
+  return new Promise((resolve, reject) => {
+    log(`Executing: ${command}`, 'info');
+    
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        log(`Command failed: ${error.message}`, 'error');
+        reject(error);
+        return;
+      }
+      
+      if (stderr) {
+        log(`Command stderr: ${stderr}`, 'warn');
+      }
+      
+      resolve(stdout);
+    });
+  });
+}
+
+// Update .env file with new values
+function updateEnvFile(updates) {
+  const envPath = path.resolve('.env');
+  let envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
+  
+  for (const [key, value] of Object.entries(updates)) {
+    // Check if key already exists
+    const regex = new RegExp(`^${key}=.*$`, 'm');
+    
+    if (regex.test(envContent)) {
+      // Update existing value
+      envContent = envContent.replace(regex, `${key}=${value}`);
+    } else {
+      // Add new key-value pair
+      envContent += `\n${key}=${value}`;
+    }
+  }
+  
+  fs.writeFileSync(envPath, envContent);
+  log(`Updated .env file with new values: ${Object.keys(updates).join(', ')}`, 'success');
+}
+
+// Deploy EVM smart contracts
+async function deployEVMContracts() {
+  log('Starting EVM contract deployment...', 'info');
+  
+  try {
+    // Ensure provider URL is set
+    if (!process.env.IOTA_EVM_RPC_URL) {
+      throw new Error('IOTA_EVM_RPC_URL is not set in .env file');
+    }
+    
+    // Connect to provider and check network
+    const provider = new ethers.providers.JsonRpcProvider(process.env.IOTA_EVM_RPC_URL);
+    const network = await provider.getNetwork();
+    log(`Connected to EVM network: chainId ${network.chainId}`, 'success');
+    
+    // Create wallet from private key
+    if (!process.env.PRIVATE_KEY) {
+      throw new Error('PRIVATE_KEY is not set in .env file');
+    }
+    
+    const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
+    const address = await wallet.getAddress();
+    log(`Using deployer address: ${address}`, 'info');
+    
+    // Check balance
+    const balance = await provider.getBalance(address);
+    const formattedBalance = ethers.utils.formatEther(balance);
+    log(`Deployer balance: ${formattedBalance} IOTA`, 'info');
+    
+    if (balance.eq(0)) {
+      log('Deployer has no IOTA. Please fund the account before deployment.', 'error');
+      return;
+    }
+    
+    // Run the Hardhat deployment script
+    log('Running Hardhat deployment script...', 'info');
+    const deployOutput = await executeCommand('npx hardhat run scripts/deploy.js --network iota-testnet');
+    
+    // Parse contract addresses from deployment output
+    const addressRegex = /([a-zA-Z]+) deployed to: (0x[a-fA-F0-9]{40})/g;
+    const deployedContracts = {};
+    let match;
+    
+    while ((match = addressRegex.exec(deployOutput)) !== null) {
+      const [, contractName, address] = match;
+      deployedContracts[contractName] = address;
+      log(`${contractName} deployed to: ${address}`, 'success');
+    }
+    
+    // Update .env file with new contract addresses
+    const envUpdates = {};
+    
+    if (deployedContracts.LendingPool) {
+      envUpdates.LENDING_POOL_ADDRESS = deployedContracts.LendingPool;
+    }
+    
+    if (deployedContracts.ZKVerifier) {
+      envUpdates.ZK_VERIFIER_ADDRESS = deployedContracts.ZKVerifier;
+    }
+    
+    if (deployedContracts.CrossLayerBridge) {
+      envUpdates.ZK_BRIDGE_ADDRESS = deployedContracts.CrossLayerBridge;
+    }
+    
+    if (Object.keys(envUpdates).length > 0) {
+      updateEnvFile(envUpdates);
+    }
+    
+    return deployedContracts;
+  } catch (error) {
+    log(`EVM deployment failed: ${error.message}`, 'error');
+    throw error;
+  }
+}
+
+// Deploy Move modules to IOTA L1
+async function deployMoveModules() {
+  log('Starting Move module deployment to IOTA L1...', 'info');
+  
+  try {
+    // Check if Move modules exist
+    const movePath = path.resolve('./move-modules');
+    
+    if (!fs.existsSync(movePath)) {
+      throw new Error('Move modules directory not found');
+    }
+    
+    // Run the Move deployment script
+    log('Running Move deployment script...', 'info');
+    const deployOutput = await executeCommand('node move-modules/deploy.js');
+    
+    // Parse module IDs from deployment output
+    const moduleRegex = /Module ([a-zA-Z_]+) deployed with ID: ([a-f0-9]+)/g;
+    const deployedModules = {};
+    let match;
+    
+    while ((match = moduleRegex.exec(deployOutput)) !== null) {
+      const [, moduleName, moduleId] = match;
+      deployedModules[moduleName] = moduleId;
+      log(`${moduleName} deployed with ID: ${moduleId}`, 'success');
+    }
+    
+    // Update .env file with new module IDs
+    const envUpdates = {};
+    
+    if (deployedModules.lending_pool) {
+      envUpdates.MOVE_LENDING_POOL_ID = deployedModules.lending_pool;
+    }
+    
+    if (deployedModules.risk_bridge) {
+      envUpdates.MOVE_RISK_BRIDGE_ID = deployedModules.risk_bridge;
+    }
+    
+    if (Object.keys(envUpdates).length > 0) {
+      updateEnvFile(envUpdates);
+    }
+    
+    return deployedModules;
+  } catch (error) {
+    log(`Move deployment failed: ${error.message}`, 'error');
+    log('This is normal if Move modules are still in development', 'warn');
+    return null;
+  }
+}
+
+// Main function to run the deployment process
+async function main() {
+  try {
+    log('IntelliLend IOTA Deployment', 'info');
+    log('--------------------------', 'info');
+    
+    // Confirm deployment
+    const confirmDeploy = await prompt('Are you sure you want to deploy all components to IOTA? (y/n)');
+    
+    if (confirmDeploy.toLowerCase() !== 'y') {
+      log('Deployment cancelled by user', 'info');
+      rl.close();
+      return;
+    }
+    
+    // Deploy EVM contracts
+    log('Step 1: Deploying EVM smart contracts to IOTA Shimmer Testnet', 'info');
+    const evmContracts = await deployEVMContracts();
+    
+    // Deploy Move modules
+    log('Step 2: Deploying Move modules to IOTA L1', 'info');
+    const moveModules = await deployMoveModules();
+    
+    // Display deployment summary
+    log('Deployment Summary', 'success');
+    log('-----------------', 'info');
+    
+    if (evmContracts) {
+      log('EVM Contracts:', 'info');
+      Object.entries(evmContracts).forEach(([name, address]) => {
+        log(`  - ${name}: ${address}`, 'success');
+      });
+    } else {
+      log('No EVM contracts deployed', 'warn');
+    }
+    
+    if (moveModules) {
+      log('Move Modules:', 'info');
+      Object.entries(moveModules).forEach(([name, id]) => {
+        log(`  - ${name}: ${id}`, 'success');
+      });
+    } else {
+      log('No Move modules deployed', 'warn');
+    }
+    
+    // Update configuration files
+    log('Deployment completed successfully!', 'success');
+    
+    // Ask to start the application
+    const startApp = await prompt('Do you want to start the application now? (y/n)');
+    
+    if (startApp.toLowerCase() === 'y') {
+      log('Starting IntelliLend application...', 'info');
+      executeCommand('npm run start');
+    } else {
+      log('You can start the application later with "npm run start"', 'info');
+    }
+  } catch (error) {
+    log(`Deployment failed: ${error.message}`, 'error');
+  } finally {
+    rl.close();
+  }
+}
+
+// Run main function
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});/**
  * Full Deployment Script for IntelliLend
  * 
  * This script deploys all components of the IntelliLend platform:

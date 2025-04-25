@@ -10,7 +10,9 @@ import {
   IconButton, 
   Tooltip,
   useTheme,
-  useMediaQuery
+  useMediaQuery,
+  Tab,
+  Tabs
 } from '@mui/material';
 import { 
   MonetizationOn, 
@@ -30,9 +32,12 @@ import RecommendationCard from '../components/dashboard/RecommendationCard';
 import HealthFactorCard from '../components/dashboard/HealthFactorCard';
 import MarketStats from '../components/dashboard/MarketStats';
 import LoadingBackdrop from '../components/ui/LoadingBackdrop';
+import IoTAWallet from '../components/iota/IoTAWallet';
+import IoTATransactions from '../components/iota/IoTATransactions';
 
 // Contexts
 import { useWeb3 } from '../context/Web3Context';
+import { useIoTA } from '../context/IoTAContext';
 import { useSnackbar } from '../context/SnackbarContext';
 
 // Services
@@ -42,6 +47,7 @@ const Dashboard = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { currentAccount } = useWeb3();
+  const { address: iotaAddress } = useIoTA();
   const { showSnackbar } = useSnackbar();
   
   // Component state
@@ -52,6 +58,12 @@ const Dashboard = () => {
   const [historyData, setHistoryData] = useState(null);
   const [recommendations, setRecommendations] = useState([]);
   const [marketAssets, setMarketAssets] = useState([]);
+  const [tabValue, setTabValue] = useState(0);
+  
+  // Handle tab change
+  const handleTabChange = (event, newValue) => {
+    setTabValue(newValue);
+  };
   
   // Format currency for display
   const formatCurrency = (value) => {
@@ -206,96 +218,124 @@ const Dashboard = () => {
         </Grid>
       </Grid>
       
-      {/* Main dashboard content */}
-      <Grid container spacing={3}>
-        {/* Left column - Risk assessment and Health factor */}
-        <Grid item xs={12} md={4}>
+      {/* Navigation Tabs */}
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+        <Tabs value={tabValue} onChange={handleTabChange} aria-label="dashboard tabs">
+          <Tab label="EVM Overview" />
+          <Tab label="IOTA Wallet" />
+        </Tabs>
+      </Box>
+      
+      {/* Tab Content */}
+      <div role="tabpanel" hidden={tabValue !== 0}>
+        {tabValue === 0 && (
           <Grid container spacing={3}>
-            <Grid item xs={12}>
-              <RiskScoreGauge score={userProfile?.riskScore || 0} loading={loading} />
+            {/* Left column - Risk assessment and Health factor */}
+            <Grid item xs={12} md={4}>
+              <Grid container spacing={3}>
+                <Grid item xs={12}>
+                  <RiskScoreGauge score={userProfile?.riskScore || 0} loading={loading} />
+                </Grid>
+                <Grid item xs={12}>
+                  <HealthFactorCard healthFactor={userProfile?.healthFactor || 0} loading={loading} />
+                </Grid>
+              </Grid>
             </Grid>
+            
+            {/* Middle column - Chart and Action buttons */}
+            <Grid item xs={12} md={5}>
+              <Card elevation={2} sx={{ borderRadius: 2, mb: 3, overflow: 'hidden' }}>
+                <ActivityChart data={historyData} loading={loading} />
+              </Card>
+              
+              {/* Quick actions */}
+              <Grid container spacing={2}>
+                <Grid item xs={6} sm={3}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    fullWidth
+                    component={RouterLink}
+                    to="/deposit"
+                    startIcon={<MonetizationOn />}
+                    sx={{ py: 1.5 }}
+                  >
+                    Deposit
+                  </Button>
+                </Grid>
+                <Grid item xs={6} sm={3}>
+                  <Button
+                    variant="contained"
+                    color="secondary"
+                    fullWidth
+                    component={RouterLink}
+                    to="/borrow"
+                    startIcon={<AccountBalanceWallet />}
+                    sx={{ py: 1.5 }}
+                  >
+                    Borrow
+                  </Button>
+                </Grid>
+                <Grid item xs={6} sm={3}>
+                  <Button
+                    variant="outlined"
+                    color="primary"
+                    fullWidth
+                    component={RouterLink}
+                    to="/identity"
+                    startIcon={<Security />}
+                    sx={{ py: 1.5 }}
+                  >
+                    Identity
+                  </Button>
+                </Grid>
+                <Grid item xs={6} sm={3}>
+                  <Button
+                    variant="outlined"
+                    color="secondary"
+                    fullWidth
+                    component={RouterLink}
+                    to="/risk"
+                    startIcon={<TrendingUp />}
+                    sx={{ py: 1.5 }}
+                  >
+                    Risk
+                  </Button>
+                </Grid>
+              </Grid>
+            </Grid>
+            
+            {/* Right column - Recommendations */}
+            <Grid item xs={12} md={3}>
+              <RecommendationCard recommendations={recommendations} loading={loading} />
+            </Grid>
+            
+            {/* Market stats (full width) */}
             <Grid item xs={12}>
-              <HealthFactorCard healthFactor={userProfile?.healthFactor || 0} loading={loading} />
+              <Typography variant="h5" sx={{ mt: 2, mb: 2 }}>
+                Market Overview
+              </Typography>
+              <MarketStats data={marketAssets} loading={loading} />
             </Grid>
           </Grid>
-        </Grid>
-        
-        {/* Middle column - Chart and Action buttons */}
-        <Grid item xs={12} md={5}>
-          <Card elevation={2} sx={{ borderRadius: 2, mb: 3, overflow: 'hidden' }}>
-            <ActivityChart data={historyData} loading={loading} />
-          </Card>
-          
-          {/* Quick actions */}
-          <Grid container spacing={2}>
-            <Grid item xs={6} sm={3}>
-              <Button
-                variant="contained"
-                color="primary"
-                fullWidth
-                component={RouterLink}
-                to="/deposit"
-                startIcon={<MonetizationOn />}
-                sx={{ py: 1.5 }}
-              >
-                Deposit
-              </Button>
+        )}
+      </div>
+      
+      <div role="tabpanel" hidden={tabValue !== 1}>
+        {tabValue === 1 && (
+          <Grid container spacing={3}>
+            {/* IOTA Wallet */}
+            <Grid item xs={12} md={6}>
+              <IoTAWallet />
             </Grid>
-            <Grid item xs={6} sm={3}>
-              <Button
-                variant="contained"
-                color="secondary"
-                fullWidth
-                component={RouterLink}
-                to="/borrow"
-                startIcon={<AccountBalanceWallet />}
-                sx={{ py: 1.5 }}
-              >
-                Borrow
-              </Button>
-            </Grid>
-            <Grid item xs={6} sm={3}>
-              <Button
-                variant="outlined"
-                color="primary"
-                fullWidth
-                component={RouterLink}
-                to="/identity"
-                startIcon={<Security />}
-                sx={{ py: 1.5 }}
-              >
-                Identity
-              </Button>
-            </Grid>
-            <Grid item xs={6} sm={3}>
-              <Button
-                variant="outlined"
-                color="secondary"
-                fullWidth
-                component={RouterLink}
-                to="/risk"
-                startIcon={<TrendingUp />}
-                sx={{ py: 1.5 }}
-              >
-                Risk
-              </Button>
+            
+            {/* IOTA Transactions */}
+            <Grid item xs={12} md={6}>
+              <IoTATransactions address={iotaAddress} />
             </Grid>
           </Grid>
-        </Grid>
-        
-        {/* Right column - Recommendations */}
-        <Grid item xs={12} md={3}>
-          <RecommendationCard recommendations={recommendations} loading={loading} />
-        </Grid>
-        
-        {/* Market stats (full width) */}
-        <Grid item xs={12}>
-          <Typography variant="h5" sx={{ mt: 2, mb: 2 }}>
-            Market Overview
-          </Typography>
-          <MarketStats data={marketAssets} loading={loading} />
-        </Grid>
-      </Grid>
+        )}
+      </div>
     </Container>
   );
 };

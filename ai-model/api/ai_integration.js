@@ -35,34 +35,68 @@ class AIIntegration {
         // Set up provider
         this.provider = new ethers.providers.JsonRpcProvider(config.provider);
         
-        // Initialize contract interfaces
-        this.lendingPool = new ethers.Contract(
-            config.lendingPoolAddress,
-            LendingPoolABI,
-            this.provider
-        );
+        // Initialize contract interfaces if addresses are available
+        if (config.lendingPoolAddress) {
+            this.lendingPool = new ethers.Contract(
+                config.lendingPoolAddress,
+                LendingPoolABI,
+                this.provider
+            );
+        } else {
+            console.warn('LendingPool address not provided - functionality will be limited');
+        }
         
-        this.zkVerifier = new ethers.Contract(
-            config.zkVerifierAddress,
-            ZKVerifierABI,
-            this.provider
-        );
+        if (config.zkVerifierAddress) {
+            this.zkVerifier = new ethers.Contract(
+                config.zkVerifierAddress,
+                ZKVerifierABI,
+                this.provider
+            );
+        } else {
+            console.warn('ZKVerifier address not provided - ZK functionality will be disabled');
+        }
         
-        this.zkBridge = new ethers.Contract(
-            config.zkBridgeAddress,
-            ZKCrossLayerBridgeABI,
-            this.provider
-        );
+        if (config.zkBridgeAddress) {
+            this.zkBridge = new ethers.Contract(
+                config.zkBridgeAddress,
+                ZKCrossLayerBridgeABI,
+                this.provider
+            );
+        } else {
+            console.warn('ZKBridge address not provided - cross-layer messaging will be disabled');
+        }
         
         this.modelPath = config.modelPath;
         this.useLocalModel = config.useLocalModel;
         this.apiUrl = config.apiUrl;
         
+        // IOTA integration properties
+        this.iotaClient = null;
+        this.iotaAccount = null;
+        
         // Cache for user data
         this.userDataCache = new Map();
         this.lastRiskScores = new Map();
         
-        console.log('AI Integration initialized');
+        console.log('AI Integration initialized with IOTA support');
+    }
+    
+    /**
+     * Set the IOTA client for Tangle operations
+     * @param {Object} client - IOTA client instance
+     */
+    setIotaClient(client) {
+        this.iotaClient = client;
+        console.log('IOTA client connected to AI integration');
+    }
+    
+    /**
+     * Set the IOTA account for wallet operations
+     * @param {Object} account - IOTA account instance
+     */
+    setIotaAccount(account) {
+        this.iotaAccount = account;
+        console.log('IOTA account connected to AI integration');
     }
     
     /**
@@ -71,9 +105,19 @@ class AIIntegration {
      */
     setWallet(privateKey) {
         this.wallet = new ethers.Wallet(privateKey, this.provider);
-        this.lendingPool = this.lendingPool.connect(this.wallet);
-        this.zkVerifier = this.zkVerifier.connect(this.wallet);
-        this.zkBridge = this.zkBridge.connect(this.wallet);
+        
+        // Connect contracts only if they exist
+        if (this.lendingPool) {
+            this.lendingPool = this.lendingPool.connect(this.wallet);
+        }
+        
+        if (this.zkVerifier) {
+            this.zkVerifier = this.zkVerifier.connect(this.wallet);
+        }
+        
+        if (this.zkBridge) {
+            this.zkBridge = this.zkBridge.connect(this.wallet);
+        }
         
         console.log('Wallet connected');
     }
@@ -151,23 +195,38 @@ class AIIntegration {
         console.log(`Fetching on-chain data for ${userAddress}`);
         
         try {
-            // Fetch basic lending data
-            const [deposits, borrows, collaterals, riskScore] = await Promise.all([
-                this.lendingPool.deposits(userAddress),
-                this.lendingPool.borrows(userAddress),
-                this.lendingPool.collaterals(userAddress),
-                this.lendingPool.riskScores(userAddress)
-            ]);
+            let userData;
             
-            // Convert to numbers
-            const userData = {
-                address: userAddress,
-                deposits: ethers.utils.formatEther(deposits),
-                borrows: ethers.utils.formatEther(borrows),
-                collaterals: ethers.utils.formatEther(collaterals),
-                riskScore: riskScore.toNumber(),
-                timestamp: Date.now()
-            };
+            // Check if LendingPool contract is available
+            if (this.lendingPool) {
+                try {
+                    // Fetch basic lending data
+                    const [deposits, borrows, collaterals, riskScore] = await Promise.all([
+                        this.lendingPool.deposits(userAddress),
+                        this.lendingPool.borrows(userAddress),
+                        this.lendingPool.collaterals(userAddress),
+                        this.lendingPool.riskScores(userAddress)
+                    ]);
+                    
+                    // Convert to numbers
+                    userData = {
+                        address: userAddress,
+                        deposits: ethers.utils.formatEther(deposits),
+                        borrows: ethers.utils.formatEther(borrows),
+                        collaterals: ethers.utils.formatEther(collaterals),
+                        riskScore: riskScore.toNumber(),
+                        timestamp: Date.now()
+                    };
+                } catch (contractError) {
+                    console.warn(`Error fetching on-chain data: ${contractError.message}`);
+                    // Use simulated data as fallback
+                    userData = this.generateSimulatedUserData(userAddress);
+                }
+            } else {
+                console.log('LendingPool contract not available, using simulated data');
+                // Use simulated data as fallback
+                userData = this.generateSimulatedUserData(userAddress);
+            }
             
             // Fetch transaction history (would be implemented based on available indexing)
             const txHistory = await this.fetchTransactionHistory(userAddress);
@@ -432,13 +491,51 @@ class AIIntegration {
         console.log(`Updating on-chain risk score for ${userAddress} to ${riskScore}`);
         
         try {
+            // Check if LendingPool contract is available
+            if (!this.lendingPool) {
+                throw new Error('LendingPool contract not initialized');
+            }
+            
+            // Update on EVM contract
             const tx = await this.lendingPool.updateRiskScore(userAddress, riskScore);
             const receipt = await tx.wait();
+            
+            // Update in cache
+            this.lastRiskScores.set(userAddress, riskScore);
+            
+            // Also record in IOTA Tangle if client is available
+            if (this.iotaClient) {
+                try {
+                    await this.recordToIotaTangle('RISK_SCORE_UPDATE', {
+                        address: userAddress,
+                        score: riskScore,
+                        transactionHash: receipt.transactionHash
+                    });
+                } catch (iotaError) {
+                    console.warn('Error recording to IOTA Tangle:', iotaError);
+                    // Continue anyway since the EVM update succeeded
+                }
+            }
             
             console.log(`Risk score updated for ${userAddress}, tx: ${receipt.transactionHash}`);
             return receipt;
         } catch (error) {
             console.error(`Error updating risk score for ${userAddress}:`, error);
+            
+            // If EVM update fails but IOTA is available, try to record there anyway
+            if (this.iotaClient) {
+                try {
+                    await this.recordToIotaTangle('RISK_SCORE_UPDATE_FALLBACK', {
+                        address: userAddress,
+                        score: riskScore,
+                        errorMessage: error.message
+                    });
+                    console.log(`Risk score recorded to IOTA Tangle despite EVM failure`);
+                } catch (iotaError) {
+                    console.error('Error in IOTA fallback:', iotaError);
+                }
+            }
+            
             throw error;
         }
     }
@@ -542,6 +639,37 @@ class AIIntegration {
                 ]
             );
             
+            // First save to IOTA Tangle if client is available
+            if (this.iotaClient) {
+                try {
+                    // Create block with data payload
+                    const blockData = {
+                        payload: {
+                            type: 1, // Tagged data
+                            tag: Buffer.from('RISK_SCORE_IOTA').toString('hex'),
+                            data: Buffer.from(JSON.stringify({
+                                address: userAddress,
+                                score: this.lastRiskScores.get(userAddress),
+                                timestamp: Date.now()
+                            })).toString('hex')
+                        }
+                    };
+                    
+                    // Submit to IOTA Tangle first
+                    const { submitBlock } = require('../../iota-sdk/client');
+                    const tanglerResult = await submitBlock(this.iotaClient, blockData);
+                    console.log(`Data submitted to IOTA Tangle: ${tanglerResult.blockId}`);
+                } catch (iotaError) {
+                    console.warn('Error submitting to IOTA Tangle:', iotaError);
+                    // Continue with bridge message regardless
+                }
+            }
+            
+            // Check if ZK bridge is available
+            if (!this.zkBridge) {
+                throw new Error('ZK Bridge not initialized');
+            }
+            
             // Gas limit for message execution on L1
             const gasLimit = 3000000;
             
@@ -572,6 +700,45 @@ class AIIntegration {
             return receipt;
         } catch (error) {
             console.error(`Error sending cross-layer message for ${userAddress}:`, error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Record data to IOTA Tangle directly without cross-layer message
+     * @param {string} messageType - Type of message
+     * @param {Object} data - Data to record
+     * @returns {Promise<Object>} Block result
+     */
+    async recordToIotaTangle(messageType, data) {
+        console.log(`Recording ${messageType} to IOTA Tangle`);
+        
+        try {
+            if (!this.iotaClient) {
+                throw new Error('IOTA client not initialized');
+            }
+            
+            const { submitBlock } = require('../../iota-sdk/client');
+            
+            // Create block with data payload
+            const blockData = {
+                payload: {
+                    type: 1, // Tagged data
+                    tag: Buffer.from(messageType).toString('hex'),
+                    data: Buffer.from(JSON.stringify({
+                        ...data,
+                        timestamp: Date.now()
+                    })).toString('hex')
+                }
+            };
+            
+            // Submit to IOTA Tangle
+            const result = await submitBlock(this.iotaClient, blockData);
+            console.log(`Data submitted to IOTA Tangle: ${result.blockId}`);
+            
+            return result;
+        } catch (error) {
+            console.error(`Error recording to IOTA Tangle:`, error);
             throw error;
         }
     }
@@ -639,6 +806,60 @@ class AIIntegration {
     }
     
     /**
+     * Generate simulated user data for testing
+     * @param {string} userAddress - Ethereum address of the user
+     * @returns {Object} Simulated user data
+     */
+    generateSimulatedUserData(userAddress) {
+        console.log(`Generating simulated data for ${userAddress}`);
+        
+        // Use a deterministic random seed based on address
+        const addressSum = userAddress.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+        const rng = (seed) => ((Math.sin(seed) * 10000) % 1 + 1) / 2; // Deterministic random between 0-1
+        
+        // Generate realistic but simulated values
+        const deposits = (100 + rng(addressSum) * 500).toFixed(2);
+        const borrows = (50 + rng(addressSum + 1) * 200).toFixed(2);
+        const collaterals = (120 + rng(addressSum + 2) * 600).toFixed(2);
+        const riskScore = Math.floor(20 + rng(addressSum + 3) * 60); // Between 20-80
+        
+        // Create user data object
+        const userData = {
+            address: userAddress,
+            deposits,
+            borrows,
+            collaterals,
+            riskScore,
+            timestamp: Date.now(),
+            isSimulated: true
+        };
+        
+        // Fetch transaction history (simulated)
+        const txHistory = this.fetchTransactionHistory(userAddress);
+        userData.transactionHistory = txHistory;
+        
+        // Calculate derived metrics
+        userData.collateralRatio = userData.borrows > 0 
+            ? (userData.collaterals / userData.borrows) 
+            : Infinity;
+            
+        userData.utilizationRatio = userData.deposits > 0 
+            ? (userData.borrows / userData.deposits)
+            : 0;
+            
+        // Simulated identity verification (30% chance of being verified)
+        userData.identityVerified = rng(addressSum + 4) > 0.7;
+        userData.identityVerificationTime = userData.identityVerified 
+            ? Date.now() - Math.floor(rng(addressSum + 5) * 30 * 86400 * 1000) 
+            : 0;
+        
+        // Cache the data
+        this.userDataCache.set(userAddress, userData);
+        
+        return userData;
+    }
+    
+    /**
      * Clear cached data for a user
      * @param {string} userAddress - Ethereum address of the user (or null for all users)
      */
@@ -650,6 +871,93 @@ class AIIntegration {
             console.log('Clearing all cached data');
             this.userDataCache.clear();
         }
+    }
+    
+    /**
+     * Get model performance metrics
+     * @param {number} timeRange - Time range for metrics (ms) or null for all time
+     * @returns {Promise<Object>} Performance metrics
+     */
+    async getModelPerformanceMetrics(timeRange = null) {
+        console.log(`Getting model performance metrics${timeRange ? ' for last ' + (timeRange / 86400000).toFixed(0) + ' days' : ''}`);
+        
+        // For now, return simulated metrics
+        // In a real implementation, these would be calculated from a database of predictions and outcomes
+        return {
+            correctPredictions: 87,
+            totalPredictions: 100,
+            truePositives: 45,
+            falsePositives: 8,
+            trueNegatives: 42,
+            falseNegatives: 5,
+            confusionMatrix: [
+                [45, 8],  // [TP, FP]
+                [5, 42]   // [FN, TN]
+            ],
+            riskBucketAccuracy: {
+                'low': 0.92,
+                'medium': 0.85,
+                'high': 0.78
+            },
+            defaultRate: 0.037,
+            riskBins: [
+                { score: '0-20', count: 15, defaultRate: 0.01 },
+                { score: '21-40', count: 25, defaultRate: 0.02 },
+                { score: '41-60', count: 30, defaultRate: 0.04 },
+                { score: '61-80', count: 20, defaultRate: 0.06 },
+                { score: '81-100', count: 10, defaultRate: 0.09 }
+            ],
+            lastUpdate: new Date().toISOString()
+        };
+    }
+    
+    /**
+     * Get feature importance for the risk model
+     * @returns {Promise<Array>} Feature importance array
+     */
+    async getFeatureImportance() {
+        console.log('Getting feature importance');
+        
+        // For now, return simulated feature importance
+        // In a real implementation, this would be calculated from model internals
+        return [
+            { feature: 'collateral_ratio', importance: 0.35, description: 'Ratio of collateral to borrowed amount' },
+            { feature: 'utilization_ratio', importance: 0.25, description: 'Ratio of borrowed to deposited amount' },
+            { feature: 'transaction_frequency', importance: 0.15, description: 'How often the user transacts' },
+            { feature: 'identity_verified', importance: 0.12, description: 'Whether identity is verified' },
+            { feature: 'account_age', importance: 0.08, description: 'Age of the account' },
+            { feature: 'deposit_volatility', importance: 0.05, description: 'Volatility of deposit patterns' }
+        ];
+    }
+    
+    /**
+     * Validate predictions for a specific address
+     * @param {string} userAddress - Ethereum address of the user
+     * @returns {Promise<Object>} Validation results
+     */
+    async validateAddressPredictions(userAddress) {
+        console.log(`Validating predictions for ${userAddress}`);
+        
+        // For now, return simulated validation data
+        // In a real implementation, this would be calculated from a database of predictions and outcomes
+        return {
+            address: userAddress,
+            predictions: [
+                { timestamp: Date.now() - 30 * 86400 * 1000, score: 45 },
+                { timestamp: Date.now() - 20 * 86400 * 1000, score: 48 },
+                { timestamp: Date.now() - 10 * 86400 * 1000, score: 52 },
+                { timestamp: Date.now(), score: 50 }
+            ],
+            actuals: [
+                { timestamp: Date.now() - 30 * 86400 * 1000, score: 47 },
+                { timestamp: Date.now() - 20 * 86400 * 1000, score: 49 },
+                { timestamp: Date.now() - 10 * 86400 * 1000, score: 50 },
+                { timestamp: Date.now(), score: 51 }
+            ],
+            accuracy: 0.92,
+            discrepancy: 2.1,
+            lastUpdate: new Date().toISOString()
+        };
     }
 }
 

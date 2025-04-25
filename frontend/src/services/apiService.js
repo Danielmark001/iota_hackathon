@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Create axios instance with base URL and default configs
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:3001',
+  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:3002', // Updated port to match server.js
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
@@ -24,6 +24,17 @@ api.interceptors.request.use(
 
 // API endpoints
 const apiService = {
+  // Health check
+  getHealthStatus: async () => {
+    try {
+      const response = await api.get('/health');
+      return response.data;
+    } catch (error) {
+      console.error('Error checking health status:', error);
+      throw error;
+    }
+  },
+  
   // User profile
   getUserProfile: async (address) => {
     try {
@@ -90,6 +101,52 @@ const apiService = {
     }
   },
   
+  // IOTA specific endpoints
+  
+  // Generate IOTA address
+  generateIotaAddress: async () => {
+    try {
+      const response = await api.get('/api/iota/address');
+      return response.data;
+    } catch (error) {
+      console.error('Error generating IOTA address:', error);
+      throw error;
+    }
+  },
+  
+  // Get IOTA balance for an address
+  getIotaBalance: async (address) => {
+    try {
+      const response = await api.get(`/api/iota/balance/${address}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching IOTA balance:', error);
+      throw error;
+    }
+  },
+  
+  // Send IOTA tokens
+  sendIotaTokens: async (recipientAddress, amount) => {
+    try {
+      const response = await api.post('/api/iota/send', { address: recipientAddress, amount });
+      return response.data;
+    } catch (error) {
+      console.error('Error sending IOTA tokens:', error);
+      throw error;
+    }
+  },
+  
+  // Submit data to IOTA Tangle
+  submitIotaData: async (data, tag = 'IntelliLend') => {
+    try {
+      const response = await api.post('/api/iota/submit', { data, tag });
+      return response.data;
+    } catch (error) {
+      console.error('Error submitting data to IOTA Tangle:', error);
+      throw error;
+    }
+  },
+  
   // Simulated market assets data (since we don't have this endpoint yet)
   getMarketAssets: async () => {
     try {
@@ -131,6 +188,18 @@ const apiService = {
           totalSupply: 1000000,
           totalBorrowed: 850000,
           utilization: 85,
+        },
+        {
+          id: 'smr',
+          name: 'Shimmer',
+          symbol: 'SMR',
+          icon: 'https://cryptologos.cc/logos/shimmer-smr-logo.png',
+          supplyAPY: 6.8,
+          supplyAPYChange: 1.5,
+          borrowAPY: 9.5,
+          totalSupply: 750000,
+          totalBorrowed: 500000,
+          utilization: 67,
         },
         {
           id: 'dai',
@@ -177,6 +246,12 @@ const apiService = {
         description: 'Your current health factor is 1.4. Consider adding more collateral to improve loan safety.',
         impact: 'medium',
         type: 'collateral'
+      },
+      {
+        title: 'Use IOTA Network for Lower Fees',
+        description: 'Switch to IOTA network for your transactions to benefit from lower fees and faster transaction times.',
+        impact: 'high',
+        type: 'network'
       },
       {
         title: 'Optimize Yield Strategy',
