@@ -1,225 +1,43 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IntelliLend - AI-Powered DeFi Lending on IOTA</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #121212;
-            color: #e0e0e0;
-        }
-        
-        header {
-            background-color: #1a1a1a;
-            padding: 1rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-        }
-        
-        .logo {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: #90caf9;
-        }
-        
-        .connect-button {
-            background-color: #2196f3;
-            color: white;
-            border: none;
-            padding: 0.5rem 1rem;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: 500;
-        }
-        
-        .connect-button:hover {
-            background-color: #1976d2;
-        }
-        
-        main {
-            max-width: 1200px;
-            margin: 2rem auto;
-            padding: 0 1rem;
-        }
-        
-        .card {
-            background-color: #1e1e1e;
-            border-radius: 8px;
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-        }
-        
-        h1, h2, h3 {
-            color: #90caf9;
-        }
-        
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 1rem;
-            margin-top: 1rem;
-        }
-        
-        .stat-card {
-            background-color: #252525;
-            padding: 1rem;
-            border-radius: 6px;
-            text-align: center;
-        }
-        
-        .stat-value {
-            font-size: 1.5rem;
-            font-weight: bold;
-            margin: 0.5rem 0;
-        }
-        
-        .primary { color: #90caf9; }
-        .secondary { color: #f48fb1; }
-        .success { color: #4caf50; }
-        .warning { color: #ff9800; }
-        .error { color: #f44336; }
-        .info { color: #03a9f4; }
-        
-        .actions {
-            display: flex;
-            gap: 1rem;
-            margin-top: 1rem;
-        }
-        
-        .action-button {
-            background-color: #333;
-            color: white;
-            border: none;
-            padding: 0.5rem 1rem;
-            border-radius: 4px;
-            cursor: pointer;
-            flex: 1;
-            font-weight: 500;
-        }
-        
-        .primary-button {
-            background-color: #2196f3;
-        }
-        
-        .secondary-button {
-            background-color: #f50057;
-        }
-        
-        footer {
-            text-align: center;
-            padding: 1rem;
-            background-color: #1a1a1a;
-            margin-top: 2rem;
-            color: #777;
-            font-size: 0.875rem;
-        }
-    </style>
-</head>
-<body>
-    <header>
-        <div class="logo">IntelliLend</div>
-        <button class="connect-button">Connect Wallet</button>
-    </header>
-    
-    <main>
-        <h1>AI-Powered DeFi Lending on IOTA</h1>
-        
-        <div class="card">
-            <h2>Market Overview</h2>
-            <div class="grid">
-                <div class="stat-card">
-                    <div>Total Deposits</div>
-                    <div class="stat-value primary">$500,000</div>
-                </div>
-                <div class="stat-card">
-                    <div>Total Borrows</div>
-                    <div class="stat-value secondary">$350,000</div>
-                </div>
-                <div class="stat-card">
-                    <div>Total Collateral</div>
-                    <div class="stat-value success">$750,000</div>
-                </div>
-                <div class="stat-card">
-                    <div>Utilization Rate</div>
-                    <div class="stat-value info">70%</div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="card">
-            <h2>Your Position</h2>
-            <p>Connect your wallet to view your lending position and risk score.</p>
-            <div class="grid" style="display: none;">
-                <div class="stat-card">
-                    <div>Your Deposits</div>
-                    <div class="stat-value primary">$1,000</div>
-                </div>
-                <div class="stat-card">
-                    <div>Your Borrows</div>
-                    <div class="stat-value secondary">$500</div>
-                </div>
-                <div class="stat-card">
-                    <div>Your Collateral</div>
-                    <div class="stat-value success">$2,000</div>
-                </div>
-                <div class="stat-card">
-                    <div>Risk Score</div>
-                    <div class="stat-value info">35/100</div>
-                </div>
-                <div class="stat-card">
-                    <div>Interest Rate</div>
-                    <div class="stat-value warning">5.5%</div>
-                </div>
-                <div class="stat-card">
-                    <div>Health Factor</div>
-                    <div class="stat-value success">3.32</div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="grid">
-            <div class="card">
-                <h3>Supply</h3>
-                <p>Supply assets to earn interest and use as collateral.</p>
-                <button class="action-button primary-button">Supply</button>
-            </div>
-            
-            <div class="card">
-                <h3>Borrow</h3>
-                <p>Borrow assets with your supplied collateral.</p>
-                <button class="action-button secondary-button">Borrow</button>
-            </div>
-        </div>
-        
-        <div class="card">
-            <h3>IOTA SDK Integration</h3>
-            <p>This platform uses IOTA SDK for native IOTA functionality, providing secure and efficient interactions with the IOTA network.</p>
-            <div class="actions">
-                <button class="action-button">Learn More</button>
-            </div>
-        </div>
-    </main>
-    
-    <footer>
-        <p>© IntelliLend 2025 | Built on IOTA</p>
-    </footer>
-    
-    <script>
-        // Simple demo functionality
-        document.querySelector('.connect-button').addEventListener('click', function() {
-            this.textContent = '0x1234...5678';
-            const positions = document.querySelectorAll('.grid');
-            if (positions.length > 1) {
-                positions[1].style.display = 'grid';
-            }
-        });
-    </script>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta
+      name="description"
+      content="IntelliLend - AI-Powered DeFi Lending Platform on IOTA"
+    />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <!--
+      manifest.json provides metadata used when your web app is installed on a
+      user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
+    -->
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    <!--
+      Notice the use of %PUBLIC_URL% in the tags above.
+      It will be replaced with the URL of the `public` folder during the build.
+      Only files inside the `public` folder can be referenced from the HTML.
+
+      Unlike "/favicon.ico" or "favicon.ico", "%PUBLIC_URL%/favicon.ico" will
+      work correctly both with client-side routing and a non-root public URL.
+      Learn how to configure a non-root public URL by running `npm run build`.
+    -->
+    <title>IntelliLend - AI-Powered DeFi Lending Platform</title>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+    <!--
+      This HTML file is a template.
+      If you open it directly in the browser, you will see an empty page.
+
+      You can add webfonts, meta tags, or analytics to this file.
+      The build step will place the bundled scripts into the <body> tag.
+
+      To begin the development, run `npm start` or `yarn start`.
+      To create a production bundle, use `npm run build` or `yarn build`.
+    -->
+  </body>
 </html>

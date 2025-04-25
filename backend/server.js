@@ -15,17 +15,29 @@ const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const dotenv = require('dotenv');
 
-// Load AI integration
-const AIIntegration = require('../ai-model/api/ai_integration');
+// Load environment variables
+dotenv.config();
+
+// Check if we should use mocks
+const USE_MOCKS = process.env.USE_MOCKS === 'true';
+
+// Choose the right AI integration
+let AIIntegration;
+if (USE_MOCKS) {
+  // Use mock implementation
+  AIIntegration = require('../ai-model/api/mock_integration');
+  console.log('Using MOCK AI integration');
+} else {
+  // Use real implementation
+  AIIntegration = require('../ai-model/api/ai_integration');
+  console.log('Using REAL AI integration');
+}
 
 // Load utilities and middleware
 const { authenticate } = require('./middleware/auth');
 const { validateRequest } = require('./middleware/validation');
 const { cacheMiddleware } = require('./middleware/cache');
 const logger = require('./utils/logger');
-
-// Load environment variables
-dotenv.config();
 
 // Initialize express app
 const app = express();
@@ -481,7 +493,7 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   logger.info(`IntelliLend API server running on port ${PORT}`);
   logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  logger.info(`Using ${aiConfig.useLocalModel ? 'local' : 'remote'} AI model`);
+  logger.info(`Using ${USE_MOCKS ? 'MOCK' : 'REAL'} AI integration`);
 });
 
 module.exports = app; // Export for testing
