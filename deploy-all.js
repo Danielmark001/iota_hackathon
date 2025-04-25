@@ -11,7 +11,7 @@
 
 const { spawn, execSync } = require('child_process');
 const path = require('path');
-const fs = require('fs');
+const fs = require('fs-extra');
 const dotenv = require('dotenv');
 const axios = require('axios');
 const { ethers } = require('ethers');
@@ -33,28 +33,61 @@ async function deployAll() {
   console.log('===============================================');
   
   try {
+    // Check if required environment variables are set
+    validateEnvironment();
+    
     // 1. Deploy IOTA native components
     console.log('\n1. Deploying IOTA native components...');
-    await deployIOTANative();
+    try {
+      await deployIOTANative();
+      console.log('✅ IOTA native components deployed successfully.');
+    } catch (error) {
+      console.error('❌ IOTA native deployment failed:', error.message);
+      throw new Error(`IOTA native deployment failed: ${error.message}`);
+    }
     
     // 2. Deploy placeholder smart contracts
     console.log('\n2. Deploying placeholder smart contracts...');
-    await deployPlaceholderContracts();
+    try {
+      await deployPlaceholderContracts();
+      console.log('✅ Smart contracts deployed successfully.');
+    } catch (error) {
+      console.error('❌ Smart contract deployment failed:', error.message);
+      throw new Error(`Smart contract deployment failed: ${error.message}`);
+    }
     
     // 3. Start AI model API
     console.log('\n3. Starting AI model API...');
-    await startAIModelAPI();
+    try {
+      await startAIModelAPI();
+      console.log('✅ AI model API started successfully.');
+    } catch (error) {
+      console.error('❌ Failed to start AI model API:', error.message);
+      throw new Error(`AI model API start failed: ${error.message}`);
+    }
     
     // 4. Start backend server
     console.log('\n4. Starting backend server...');
-    await startBackendServer();
+    try {
+      await startBackendServer();
+      console.log('✅ Backend server started successfully.');
+    } catch (error) {
+      console.error('❌ Failed to start backend server:', error.message);
+      throw new Error(`Backend server start failed: ${error.message}`);
+    }
     
     // 5. Start frontend application
     console.log('\n5. Starting frontend application...');
-    await startFrontend();
+    try {
+      await startFrontend();
+      console.log('✅ Frontend application started successfully.');
+    } catch (error) {
+      console.error('❌ Failed to start frontend application:', error.message);
+      throw new Error(`Frontend start failed: ${error.message}`);
+    }
     
     console.log('\n===============================================');
-    console.log('All components deployed successfully!');
+    console.log('🚀 All components deployed successfully!');
     console.log('===============================================');
     console.log('Services:');
     console.log(`- Backend API: http://localhost:${process.env.PORT || 3001}`);
@@ -64,10 +97,40 @@ async function deployAll() {
     console.log('\nPress Ctrl+C to stop all services and exit.');
     
   } catch (error) {
-    console.error('Deployment failed:', error);
+    console.error('❌ Deployment failed:', error.message);
     stopAllServices();
     process.exit(1);
   }
+}
+
+/**
+ * Validate required environment variables
+ */
+function validateEnvironment() {
+  const requiredVars = [
+    'STRONGHOLD_PASSWORD',
+    'IOTA_NETWORK'
+  ];
+  
+  const missing = [];
+  
+  for (const varName of requiredVars) {
+    if (!process.env[varName]) {
+      missing.push(varName);
+    }
+  }
+  
+  if (missing.length > 0) {
+    throw new Error(`Missing required environment variables: ${missing.join(', ')}. Please check your .env file.`);
+  }
+  
+  // Validate network value
+  const validNetworks = ['mainnet', 'testnet', 'devnet'];
+  if (!validNetworks.includes(process.env.IOTA_NETWORK)) {
+    throw new Error(`Invalid IOTA_NETWORK value: ${process.env.IOTA_NETWORK}. Must be one of: ${validNetworks.join(', ')}`);
+  }
+  
+  console.log('✅ Environment validated successfully.');
 }
 
 /**
@@ -76,10 +139,56 @@ async function deployAll() {
 async function deployIOTANative() {
   try {
     console.log('Running IOTA native deployment script...');
-    execSync('node scripts/iota-native-deploy.js', { stdio: 'inherit' });
-    console.log('IOTA native components deployed successfully.');
+    
+    // First check that the IOTA SDK is properly installed
+    try {
+      // Check if @iota/sdk can be required
+      require('@iota/sdk');
+      console.log('🔍 IOTA SDK verified successfully.');
+    } catch (sdkError) {
+      console.error('❌ IOTA SDK not found or cannot be loaded.');
+      console.log('Attempting to install @iota/sdk...');
+      
+      try {
+        execSync('npm install @iota/sdk@^1.1.6 --save', { stdio: 'inherit' });
+        console.log('✅ IOTA SDK installed successfully.');
+      } catch (installError) {
+        throw new Error(`Failed to install IOTA SDK: ${installError.message}`);
+      }
+    }
+    
+    // Check if the wallet database exists, if not initialize it
+    const databasePath = process.env.IOTA_STORAGE_PATH || './wallet-database';
+    const strongholdPath = process.env.STRONGHOLD_SNAPSHOT_PATH || './wallet.stronghold';
+    
+    if (!fs.existsSync(databasePath)) {
+      console.log(`Creating wallet database directory: ${databasePath}`);
+      fs.mkdirSync(databasePath, { recursive: true });
+    }
+    
+    // Create a backup of existing stronghold file if it exists
+    if (fs.existsSync(strongholdPath)) {
+      const backupPath = `${strongholdPath}.backup.${Date.now()}`;
+      console.log(`Creating backup of existing stronghold file: ${backupPath}`);
+      fs.copyFileSync(strongholdPath, backupPath);
+    }
+    
+    // Now run the deployment script with better error handling
+    try {
+      execSync('node scripts/iota-native-deploy.js', { 
+        stdio: 'inherit',
+        timeout: 60000 // 60-second timeout
+      });
+      console.log('✅ IOTA native components deployed successfully.');
+    } catch (scriptError) {
+      if (scriptError.status === 143) {
+        throw new Error('Deployment script timed out after 60 seconds.');
+      } else {
+        throw new Error(`Deployment script error: ${scriptError.message}`);
+      }
+    }
   } catch (error) {
-    console.error('Error deploying IOTA native components:', error);
+    console.error('❌ Error deploying IOTA native components:', error.message);
     throw error;
   }
 }
@@ -251,36 +360,83 @@ async function waitForService(url, maxRetries = 30) {
  * Stop all services
  */
 function stopAllServices() {
-  console.log('\nStopping all services...');
+  console.log('\n🛑 Stopping all services...');
   
-  if (aiModelProcess) {
+  let allStopped = true;
+  
+  // Helper function to kill a process with better error handling
+  const safeKillProcess = (process, name) => {
+    if (!process) return true;
+    
     try {
-      process.kill(-aiModelProcess.pid);
+      // Try to gracefully terminate first
+      if (process.pid) {
+        console.log(`Stopping ${name} process (PID: ${process.pid})...`);
+        
+        // Check if process is still running
+        try {
+          process.kill(0); // Signal 0 is used to check if process exists
+        } catch (e) {
+          // Process doesn't exist
+          console.log(`${name} process already stopped.`);
+          return true;
+        }
+        
+        // Try SIGTERM first (graceful)
+        process.kill('SIGTERM');
+        
+        // Give it 2 seconds to terminate gracefully
+        setTimeout(() => {
+          try {
+            // Check if still running
+            process.kill(0);
+            // If we reach here, process is still running, force kill
+            console.log(`${name} didn't terminate gracefully, forcing...`);
+            process.kill('SIGKILL');
+          } catch (e) {
+            // Process already terminated
+          }
+        }, 2000);
+      }
+      return true;
     } catch (error) {
-      console.log(`Error stopping AI model: ${error.message}`);
+      console.log(`❌ Error stopping ${name}: ${error.message}`);
+      allStopped = false;
+      return false;
     }
-    aiModelProcess = null;
+  };
+  
+  // Stop each process
+  const aiStopped = safeKillProcess(aiModelProcess, 'AI model');
+  const backendStopped = safeKillProcess(backendProcess, 'backend');
+  const frontendStopped = safeKillProcess(frontendProcess, 'frontend');
+  
+  aiModelProcess = null;
+  backendProcess = null;
+  frontendProcess = null;
+  
+  // Check for any lingering processes
+  try {
+    const { execSync } = require('child_process');
+    console.log('Checking for lingering processes...');
+    
+    // This will work on Windows systems
+    const result = execSync('tasklist | findstr "node python"').toString();
+    if (result) {
+      console.log('Some processes might still be running:');
+      console.log(result);
+      console.log('You may need to terminate them manually.');
+    }
+  } catch (error) {
+    // Either the command failed or there are no matching processes
+    // We can ignore this error
   }
   
-  if (backendProcess) {
-    try {
-      process.kill(-backendProcess.pid);
-    } catch (error) {
-      console.log(`Error stopping backend: ${error.message}`);
-    }
-    backendProcess = null;
+  if (allStopped) {
+    console.log('✅ All services stopped successfully.');
+  } else {
+    console.log('⚠️ Some services may still be running. Check your task manager.');
   }
-  
-  if (frontendProcess) {
-    try {
-      process.kill(-frontendProcess.pid);
-    } catch (error) {
-      console.log(`Error stopping frontend: ${error.message}`);
-    }
-    frontendProcess = null;
-  }
-  
-  console.log('All services stopped.');
 }
 
 // Handle cleanup on exit
