@@ -4,9 +4,7 @@
  * This file provides a simplified interface to the IOTA SDK Wallet functionality.
  */
 
-// When properly installed, uncomment these lines:
-// const { Wallet, CoinType } = require('@iota/sdk');
-
+const { Wallet, CoinType } = require('@iota/sdk');
 const config = require('./config');
 
 /**
@@ -18,51 +16,22 @@ async function createWallet(network = config.DEFAULT_NETWORK) {
   try {
     const walletOptions = config.getWalletOptions(network);
     
-    // This is a placeholder until proper installation
-    const Wallet = function(options) {
-      this.options = options;
-      
-      this.getAccounts = async () => {
-        return [];
-      };
-      
-      this.createAccount = async (accountOptions) => {
-        const account = {
-          alias: accountOptions.alias || 'Account 1',
-          addresses: [],
-          
-          generateAddress: async () => {
-            const newAddress = `smr1qrv74z9xxqc3rvux8u0h6hmhx6hzcecfsjguf7lrqvqk9ffkp7glfupf6dv`;
-            account.addresses.push(newAddress);
-            return newAddress;
-          },
-          
-          getBalance: async () => {
-            return {
-              baseCoin: {
-                total: '1000000000',
-                available: '1000000000'
-              }
-            };
-          },
-          
-          send: async (amount, address) => {
-            return {
-              blockId: '0x' + Array(64).fill('0').join(''),
-              transactionId: '0x' + Array(64).fill('1').join('')
-            };
-          }
-        };
-        
-        return account;
-      };
-    };
-    
-    // Create wallet instance
-    const wallet = new Wallet(walletOptions);
-    console.log('IOTA wallet initialized successfully');
-    
-    return wallet;
+    // Create wallet instance with proper error handling
+    try {
+      const wallet = new Wallet(walletOptions);
+      console.log('IOTA wallet initialized successfully');
+      return wallet;
+    } catch (error) {
+      console.error('Error initializing IOTA wallet:', error);
+      // Provide more specific error message based on error type
+      if (error.message && error.message.includes('stronghold')) {
+        throw new Error('Stronghold password or file issue: ' + error.message);
+      } else if (error.message && error.message.includes('connect')) {
+        throw new Error('Network connection error: ' + error.message);
+      } else {
+        throw error;
+      }
+    }
   } catch (error) {
     console.error('Error creating IOTA wallet:', error);
     throw error;
@@ -86,13 +55,22 @@ async function getOrCreateAccount(wallet, alias = 'Default Account') {
       return existingAccount;
     }
     
-    // Create new account
+    // Create new account with enhanced options
     console.log(`Creating new account: ${alias}`);
     return await wallet.createAccount({
-      alias
+      alias,
+      coinType: CoinType.Shimmer,
+      allowReattachment: true,
+      allowMaxDepth: true,
+      allowZeroGradeResp: true,
+      allowZeroAmount: false,
+      allowZeroOutput: false
     });
   } catch (error) {
     console.error('Error getting or creating account:', error);
+    if (error.message && error.message.includes('permission')) {
+      throw new Error('Permission denied: Check your stronghold file permissions');
+    }
     throw error;
   }
 }
@@ -104,7 +82,15 @@ async function getOrCreateAccount(wallet, alias = 'Default Account') {
  */
 async function generateAddress(account) {
   try {
-    const address = await account.generateAddress();
+    // Generate address with advanced options
+    const addressOptions = {
+      internal: false, // External address (can receive funds)
+      ledgerNanoPrompt: false // Don't prompt ledger users
+    };
+    
+    const addressResponse = await account.generateAddress(addressOptions);
+    const address = addressResponse.address;
+    
     console.log(`Generated new address: ${address}`);
     return address;
   } catch (error) {
@@ -120,11 +106,28 @@ async function generateAddress(account) {
  */
 async function getBalance(account) {
   try {
-    const balance = await account.getBalance();
+    // Get balance with specific options
+    const balanceOptions = {
+      includeStorageDeposit: true,
+      filterStorageDepositReturn: false
+    };
+    
+    const balance = await account.getBalance(balanceOptions);
+    
+    // Format values for display (handle potentially very large numbers safely)
     const totalSMR = BigInt(balance.baseCoin.total) / BigInt(1000000);
     const availableSMR = BigInt(balance.baseCoin.available) / BigInt(1000000);
     
     console.log(`Account balance: ${totalSMR} SMR (${availableSMR} SMR available)`);
+    
+    // Also report any native tokens if present
+    if (balance.nativeTokens && balance.nativeTokens.length > 0) {
+      console.log('Native tokens:');
+      balance.nativeTokens.forEach(token => {
+        console.log(`- ${token.id}: ${token.available}`);
+      });
+    }
+    
     return balance;
   } catch (error) {
     console.error('Error getting account balance:', error);
@@ -141,12 +144,30 @@ async function getBalance(account) {
  */
 async function sendTokens(account, amount, address) {
   try {
+    // Input validation
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+      throw new Error('Invalid amount: must be a positive number');
+    }
+    
+    if (!address || !address.startsWith('smr1')) {
+      throw new Error('Invalid address: must be a valid Shimmer address');
+    }
+    
     // Convert SMR to smallest unit (glow)
     // Handle string numbers by multiplying as numbers first, then convert to BigInt
     const amountInGlow = BigInt(Math.floor(Number(amount) * 1000000));
     
     console.log(`Sending ${amount} SMR to ${address}...`);
-    const result = await account.send(amountInGlow.toString(), address);
+    
+    // Create transaction with advanced options
+    const transaction = {
+      address: address,
+      amount: amountInGlow.toString(),
+      tag: 'IntelliLend', // Optional tag for identification
+      metadata: 'Sent via IntelliLend Platform' // Optional metadata
+    };
+    
+    const result = await account.send(transaction);
     
     console.log(`Transaction sent successfully!`);
     console.log(`Block ID: ${result.blockId}`);
@@ -155,6 +176,12 @@ async function sendTokens(account, amount, address) {
     return result;
   } catch (error) {
     console.error('Error sending tokens:', error);
+    // Enhance error messages for common issues
+    if (error.message && error.message.includes('insufficient funds')) {
+      throw new Error('Insufficient funds: Check your balance and try again');
+    } else if (error.message && error.message.includes('network')) {
+      throw new Error('Network error: Check your connection and try again');
+    }
     throw error;
   }
 }
