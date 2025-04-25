@@ -6,7 +6,7 @@
 [<img src="https://github.com/WilliamN40.png" height="20" width="20" /> William Notowibowo](https://github.com/WilliamN40) |
 
 **Docs:** 
-[Project Report](https://github.com/Danielmark001/iota-hackathon/blob/main/uml%20diagram/uml-sequence-diagram.png) 
+[Project Report](https://github.com/Danielmark001/iota-hackathon/blob/main/project-report.pdf) 
 
 ## 🏆 IOTA DefAI Hackathon Project
 
@@ -153,8 +153,7 @@ For detailed documentation, see the [docs folder](docs/).
 
 - [IOTA Documentation](https://docs.iota.org/)
 - [IOTA EVM](https://evm.iota.org/)
-- [Move Programming Language](https://docs.iota.org/shimmer/smart-contracts/guide/move/getting_started)
-- [IOTA Identity Framework](https://wiki.iota.org/identity.rs/introduction)
+- [IOTA Identity Framework](https://wiki.iota.org/identity.rs/welcome)
 
 
 ## 📣 Feedback and Contributions

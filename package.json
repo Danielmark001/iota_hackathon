@@ -9,25 +9,35 @@
     "frontend": "cd frontend && npm start",
     "demo": "node scripts/demo.js",
     "deploy": "npx hardhat run scripts/deploy.js --network iota-testnet",
+    "deploy-iota-native": "node scripts/iota-native-deploy.js",
+    "iota-wallet-example": "node iota-sdk/examples/wallet-example.js",
+    "iota-client-example": "node iota-sdk/examples/client-example.js",
     "start": "concurrently \"npm run server\" \"npm run frontend\"",
     "install-all": "npm install && cd frontend && npm install",
     "lint": "eslint . --ext .js,.jsx",
     "build": "cd frontend && npm run build",
-    "ai-train": "cd ai-model && python train_model.py"
+    "ai-train": "cd ai-model && python train_model.py",
+    "deploy-all": "node deploy-all.js"
   },
   "dependencies": {
     "@chainlink/contracts": "^0.5.1",
     "@openzeppelin/contracts": "^4.8.0",
     "axios": "^1.2.2",
     "chalk": "^4.1.2",
+    "compression": "^1.8.0",
     "cors": "^2.8.5",
     "dotenv": "^16.0.3",
     "ethers": "^5.7.2",
     "express": "^4.18.2",
+    "express-rate-limit": "^6.11.2",
     "figlet": "^1.8.1",
+    "fs-extra": "^11.1.0",
+    "helmet": "^6.2.0",
     "inquirer": "^8.2.6",
     "jsonwebtoken": "^9.0.0",
-    "mongoose": "^6.8.3"
+    "mongoose": "^6.8.3",
+    "morgan": "^1.10.0",
+    "winston": "^3.17.0"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^2.0.1",
@@ -37,6 +47,7 @@
     "concurrently": "^7.6.0",
     "eslint": "^8.32.0",
     "hardhat": "^2.12.6",
+    "node-abi": "^3.51.0",
     "nodemon": "^2.0.20"
   },
   "repository": {
