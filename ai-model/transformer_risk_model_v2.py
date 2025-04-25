@@ -51,6 +51,55 @@ import shap
 import lime
 from lime import lime_tabular
 
+# Add PositionalEncoding class for transformer model
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model, max_seq_length=100):
+        super().__init__()
+        
+        # Create positional encoding matrix
+        pe = torch.zeros(max_seq_length, d_model)
+        position = torch.arange(0, max_seq_length, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        
+        # Register buffer (not a parameter but part of the module)
+        self.register_buffer('pe', pe.unsqueeze(0))
+        
+    def forward(self, x):
+        # Add positional encoding to input
+        return x + self.pe[:, :x.size(1)]
+
+# Add state-of-the-art transformer architecture
+class TransformerRiskModel(nn.Module):
+    def __init__(self, feature_dim, num_heads=8, num_layers=4):
+        super().__init__()
+        self.feature_embedding = nn.Linear(feature_dim, 256)
+        self.positional_encoding = PositionalEncoding(256)
+        self.transformer_encoder = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(d_model=256, nhead=num_heads),
+            num_layers=num_layers
+        )
+        self.prediction_head = nn.Linear(256, 1)
+        
+    def forward(self, x, attention_mask=None):
+        # Implement multi-head attention with feature importance tracking
+        x = self.feature_embedding(x)
+        x = self.positional_encoding(x)
+        attention_weights = []
+        
+        # Pass through transformer with attention weight capture
+        for layer in self.transformer_encoder.layers:
+            x, attn_weights = layer.self_attn(x, x, x, attn_mask=attention_mask, return_attention_weights=True)
+            attention_weights.append(attn_weights)
+            
+        # Final prediction
+        risk_score = self.prediction_head(x)
+        
+        # Return both prediction and attention weights for explainability
+        return risk_score, attention_weights
+
 class AdvancedTransformerRiskModel:
     """
     Advanced transformer-based model for assessing borrower risk in the IntelliLend platform.
@@ -298,7 +347,7 @@ class AdvancedTransformerRiskModel:
         )
     
     def _build_transformer_model(self):
-        """Build the transformer-based risk assessment model"""
+        """Build the enhanced transformer-based risk assessment model with attention mechanisms"""
         # Initialize tokenizer if not already done
         if self.tokenizer is None:
             self._init_tokenizer()
@@ -337,8 +386,43 @@ class AdvancedTransformerRiskModel:
             [tx_embeddings, market_embeddings, identity_embeddings]
         )
         
-        # Process text embeddings
-        text_features = tf.keras.layers.Dense(256, activation='relu')(text_embeddings)
+        # Process text embeddings with our custom transformer
+        text_features_shape = tf.keras.layers.Dense(256, activation='relu')(text_embeddings)
+        text_features = tf.keras.layers.Reshape((-1, 256))(text_features_shape)  # Reshape for transformer
+        
+        # Create custom attention mechanism for feature importance tracking
+        num_heads = 8
+        head_dim = 32
+        
+        # Multi-head attention with importance tracking
+        query = tf.keras.layers.Dense(num_heads * head_dim)(text_features)
+        key = tf.keras.layers.Dense(num_heads * head_dim)(text_features)
+        value = tf.keras.layers.Dense(num_heads * head_dim)(text_features)
+        
+        # Reshape for multi-head attention
+        batch_size = tf.shape(query)[0]
+        query = tf.reshape(query, [batch_size, -1, num_heads, head_dim])
+        query = tf.transpose(query, [0, 2, 1, 3])  # [batch, heads, seq_len, head_dim]
+        key = tf.reshape(key, [batch_size, -1, num_heads, head_dim])
+        key = tf.transpose(key, [0, 2, 1, 3])
+        value = tf.reshape(value, [batch_size, -1, num_heads, head_dim])
+        value = tf.transpose(value, [0, 2, 1, 3])
+        
+        # Attention calculation
+        scale = tf.math.sqrt(tf.cast(head_dim, tf.float32))
+        attention_scores = tf.matmul(query, key, transpose_b=True) / scale
+        attention_weights = tf.nn.softmax(attention_scores, axis=-1)
+        
+        # Apply attention
+        context = tf.matmul(attention_weights, value)  # [batch, heads, seq_len, head_dim]
+        context = tf.transpose(context, [0, 2, 1, 3])  # [batch, seq_len, heads, head_dim]
+        context = tf.reshape(context, [batch_size, -1, num_heads * head_dim])
+        
+        # Feature importance from attention weights
+        feature_importance = tf.reduce_mean(attention_weights, axis=[0, 1])  # Average over batch and heads
+        
+        # Output layer for text features
+        text_features = tf.keras.layers.Dense(256, activation='relu')(context[:, 0, :])
         text_features = tf.keras.layers.Dropout(0.2)(text_features)
         
         # Process structured data
@@ -348,11 +432,17 @@ class AdvancedTransformerRiskModel:
         # Combine all features
         combined = tf.keras.layers.Concatenate()([text_features, structured_features])
         
-        # Common layers
+        # Common layers with residual connections for better gradient flow
         x = tf.keras.layers.Dense(512, activation='relu')(combined)
         x = tf.keras.layers.Dropout(0.3)(x)
+        x = tf.keras.layers.Add()([x, tf.keras.layers.Dense(512)(combined)])  # Residual connection
+        x = tf.keras.layers.LayerNormalization()(x)
+        
         x = tf.keras.layers.Dense(256, activation='relu')(x)
         x = tf.keras.layers.Dropout(0.2)(x)
+        x = tf.keras.layers.Add()([x, tf.keras.layers.Dense(256)(combined)])  # Residual connection
+        x = tf.keras.layers.LayerNormalization()(x)
+        
         x = tf.keras.layers.Dense(128, activation='relu')(x)
         
         # Multiple output heads

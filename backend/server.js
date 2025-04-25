@@ -320,6 +320,128 @@ app.get('/api/bridge/messages/:address', async (req, res) => {
   }
 });
 
+// Add model validation endpoint
+app.get('/api/model/performance', authenticate, async (req, res) => {
+  try {
+    // Get model performance metrics
+    const performanceMetrics = await aiIntegration.getModelPerformanceMetrics();
+    
+    // Calculate key metrics
+    const accuracy = performanceMetrics.correctPredictions / performanceMetrics.totalPredictions;
+    const precision = performanceMetrics.truePositives / (performanceMetrics.truePositives + performanceMetrics.falsePositives);
+    const recall = performanceMetrics.truePositives / (performanceMetrics.truePositives + performanceMetrics.falseNegatives);
+    const f1Score = 2 * (precision * recall) / (precision + recall);
+    
+    res.json({
+      accuracy,
+      precision,
+      recall,
+      f1Score,
+      confusionMatrix: performanceMetrics.confusionMatrix,
+      riskBucketAccuracy: performanceMetrics.riskBucketAccuracy,
+      lastUpdate: performanceMetrics.lastUpdate
+    });
+  } catch (error) {
+    console.error('Error fetching model performance:', error);
+    res.status(500).json({ error: 'Error fetching model performance' });
+  }
+});
+
+// Add model validation with time period
+app.get('/api/model/performance/:period', authenticate, async (req, res) => {
+  try {
+    const { period } = req.params;
+    let timeRange;
+    
+    // Set time range based on period
+    switch(period) {
+      case 'week':
+        timeRange = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
+        break;
+      case 'month':
+        timeRange = 30 * 24 * 60 * 60 * 1000; // 30 days in ms
+        break;
+      case 'quarter':
+        timeRange = 90 * 24 * 60 * 60 * 1000; // 90 days in ms
+        break;
+      default:
+        timeRange = null; // All time
+    }
+    
+    // Get model performance metrics
+    const performanceMetrics = await aiIntegration.getModelPerformanceMetrics(timeRange);
+    
+    // Calculate key metrics
+    const accuracy = performanceMetrics.correctPredictions / performanceMetrics.totalPredictions;
+    const precision = performanceMetrics.truePositives / (performanceMetrics.truePositives + performanceMetrics.falsePositives);
+    const recall = performanceMetrics.truePositives / (performanceMetrics.truePositives + performanceMetrics.falseNegatives);
+    const f1Score = 2 * (precision * recall) / (precision + recall);
+    
+    res.json({
+      period,
+      accuracy,
+      precision,
+      recall,
+      f1Score,
+      confusionMatrix: performanceMetrics.confusionMatrix,
+      riskBucketAccuracy: performanceMetrics.riskBucketAccuracy,
+      defaultRate: performanceMetrics.defaultRate,
+      riskBins: performanceMetrics.riskBins,
+      totalSamples: performanceMetrics.totalPredictions,
+      lastUpdate: performanceMetrics.lastUpdate
+    });
+  } catch (error) {
+    console.error(`Error fetching model performance for period ${req.params.period}:`, error);
+    res.status(500).json({ error: 'Error fetching model performance' });
+  }
+});
+
+// Add feature importance endpoint
+app.get('/api/model/feature-importance', authenticate, async (req, res) => {
+  try {
+    // Get feature importance from AI model
+    const featureImportance = await aiIntegration.getFeatureImportance();
+    
+    // Sort features by importance
+    const sortedFeatures = featureImportance.sort((a, b) => b.importance - a.importance);
+    
+    res.json({
+      features: sortedFeatures,
+      lastUpdate: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error fetching feature importance:', error);
+    res.status(500).json({ error: 'Error fetching feature importance' });
+  }
+});
+
+// Add model validation for specific address
+app.get('/api/model/validation/:address', authenticate, async (req, res) => {
+  try {
+    const { address } = req.params;
+    
+    // Validate Ethereum address
+    if (!ethers.utils.isAddress(address)) {
+      return res.status(400).json({ error: 'Invalid Ethereum address' });
+    }
+    
+    // Get validation data for this specific address
+    const validationData = await aiIntegration.validateAddressPredictions(address);
+    
+    res.json({
+      address,
+      predictions: validationData.predictions,
+      actuals: validationData.actuals,
+      accuracy: validationData.accuracy,
+      discrepancy: validationData.discrepancy,
+      lastUpdate: validationData.lastUpdate
+    });
+  } catch (error) {
+    console.error(`Error validating predictions for ${req.params.address}:`, error);
+    res.status(500).json({ error: 'Error validating predictions' });
+  }
+});
+
 // Admin routes (protected)
 app.post('/api/admin/update-risk-score', authenticate, validateRequest(['address', 'score']), async (req, res) => {
   try {
