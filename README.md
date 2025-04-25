@@ -2,54 +2,87 @@
 
 ![IntelliLend Logo](./docs/images/logo.png)
 
-IntelliLend is an intelligent lending protocol that leverages IOTA's unique dual-layer architecture and AI to revolutionize DeFi lending. It uses machine learning to assess borrower risk, optimize interest rates, and enhance the security and efficiency of lending operations.
+## Project Overview
 
-## Features
+IntelliLend is an intelligent lending protocol built for the IOTA DefAI Hackathon that leverages IOTA's unique dual-layer architecture and AI to revolutionize DeFi lending. It uses machine learning to assess borrower risk, optimize interest rates, and enhance the security and efficiency of lending operations.
 
-- **AI Risk Assessment**: Advanced machine learning model evaluates borrower risk based on on-chain activity
-- **Dual-Layer Security**: Leverages IOTA's unique architecture for secure asset representation
-- **Dynamic Interest Rates**: Personalized rates based on risk scoring and market conditions
-- **Cross-Layer Communication**: Seamless integration between EVM (Layer 2) and Move (Layer 1)
-- **Privacy-Preserving Credit Scoring**: Get accurate risk assessments without compromising privacy
-
-## Project Components
-
-### Smart Contract Infrastructure
-- Lending pools on IOTA EVM using Solidity
-- Collateral management, loan issuance, and liquidation mechanisms
-- Secure asset representation on Layer 1 using Move's object-centric model
-- Cross-layer communication for enhanced security and efficiency
+## Key Features
 
 ### AI Risk Assessment Engine
-- Machine learning model to assess borrower risk based on on-chain activity
-- Transaction pattern analysis, wallet history, and repayment behavior
-- Dynamic interest rate model that adjusts based on risk scores
-- Early warning systems for potential defaults
+- **Advanced Machine Learning**: Evaluates borrower risk based on on-chain activity
+- **Dynamic Interest Rates**: Personalized rates based on risk scoring and market conditions
+- **Early Warning System**: Detects potential defaults before they happen
+- **Reinforcement Learning**: Optimizes interest rates in real-time based on market conditions
+
+### Smart Contract Infrastructure
+- **Dual-Layer Security**: Leverages IOTA's architecture for secure asset representation
+- **Zero-Knowledge Proofs**: Privacy-preserving credit scoring and identity verification
+- **Enhanced Cross-Layer Bridge**: Secure communication between EVM and Move layers
+- **Liquidation Protection**: AI-powered early warning system to prevent liquidations
 
 ### Privacy-Preserving Identity Integration
-- IOTA's identity framework for secure user verification
-- Privacy-preserving credit scoring
-- Zero-knowledge proofs for sharing necessary data without compromising privacy
+- **Zero-Knowledge Identity Verification**: Prove credentials without revealing sensitive data
+- **Private Credit Scoring**: Get accurate risk assessments without compromising privacy
+- **Encrypted Cross-Layer Messaging**: Secure communication between layers
 
 ### Cross-Chain Liquidity Module
-- IOTA's cross-chain capabilities for liquidity aggregation
-- AI to optimize capital efficiency across different pools and platforms
-- Automated strategies for yield optimization
+- **Multi-Chain Support**: Aggregate liquidity from different blockchain networks
+- **AI Yield Optimization**: Automatically rebalance liquidity for maximum returns
+- **Dynamic Strategy Allocation**: Adjust strategies based on market conditions
+- **Risk-Adjusted Yields**: Balance risk and return based on user preferences
 
-### User Interface
-- Intuitive dashboard for borrowers and lenders
-- Personalized risk assessments and recommendations
-- Visualizations of lending activity and market conditions
-- Transparency into how AI influences lending decisions
+### User Experience
+- **Intuitive Dashboard**: Clean, modern interface for borrowers and lenders
+- **Real-Time Analytics**: Live updates on position health and market conditions
+- **Risk Visualization**: Clear representation of risk factors and health metrics
+- **Transparent AI Decisions**: Understand how AI influences lending decisions
 
-## Setup Instructions
+## Technical Architecture
+
+### System Components
+
+1. **Layer 2 (IOTA EVM)**
+   - LendingPool.sol: Main contract for lending and borrowing
+   - ZKCrossLayerBridge.sol: Enhanced bridge for secure cross-layer communication
+   - CrossChainLiquidity.sol: Module for cross-chain liquidity aggregation
+
+2. **Layer 1 (IOTA Move)**
+   - enhanced_asset.move: Advanced asset representation with privacy features
+   - zk_verifier.move: Zero-knowledge proof verification module
+
+3. **AI Components**
+   - risk_model.py: Advanced risk assessment model with multiple prediction components
+   - ai-helper.js: Interface between the AI model and the platform
+
+4. **Frontend**
+   - React-based dashboard with real-time analytics
+   - Integration with IOTA wallet for seamless transactions
+
+### AI Model Architecture
+
+Our AI risk assessment engine consists of multiple specialized models:
+
+1. **Risk Classifier**: Categorizes borrowers into risk levels (Low, Medium, High, Very High)
+2. **Default Predictor**: Estimates probability of default based on on-chain behavior
+3. **Time Series Models**: Predicts future behavior based on historical patterns
+4. **Interest Rate Optimizer**: Uses reinforcement learning to optimize interest rates
+
+The models analyze 40+ features including:
+- Transaction patterns
+- Wallet behavior
+- Lending history
+- Repayment patterns
+- Cross-chain activity
+- Market conditions
+
+## Demo Instructions
 
 ### Prerequisites
 
-- Node.js (v14+)
+- Node.js (v16+)
 - Python (v3.8+)
-- IOTA EVM-compatible wallet with IOTA tokens
-- Git
+- Hardhat
+- IOTA EVM-compatible wallet
 
 ### Installation
 
@@ -59,136 +92,176 @@ IntelliLend is an intelligent lending protocol that leverages IOTA's unique dual
    cd intellilend
    ```
 
-2. Run the setup script:
+2. Install dependencies:
    ```bash
-   node scripts/setup.js
+   npm install
+   cd ai-model && pip install -r requirements.txt && cd ..
    ```
 
-   This will:
-   - Install dependencies for all components
-   - Create default configuration files
-   - Set up the environment
-   - Train the AI model with simulated data
-
-3. Configure your environment:
-   - Edit the `.env` file with your specific settings
-   - Add your wallet private key (for development only)
-   - Configure IOTA EVM RPC URLs
-
-### Smart Contract Deployment
-
-Deploy the smart contracts to the IOTA EVM network:
-
-```bash
-node scripts/deploy-contracts.js
-```
-
-This will:
-- Deploy the CrossLayerBridge contract
-- Deploy the LendingPool contract
-- Update your `.env` file with the contract addresses
-
-### Starting the Services
-
-1. Start the backend API:
+3. Set up environment variables:
    ```bash
-   npm run start:backend
+   cp .env.example .env
+   # Edit .env with your credentials
    ```
 
-2. Start the AI model API:
+### Running the Demo
+
+1. Start the AI model service:
    ```bash
    npm run start:ai
    ```
 
-3. Start the frontend:
+2. Deploy the contracts to the IOTA EVM testnet:
+   ```bash
+   npm run deploy:testnet
+   ```
+
+3. Run the demo script:
+   ```bash
+   npm run demo
+   ```
+
+4. Start the frontend:
    ```bash
    npm run start:frontend
    ```
 
-4. Access the application at http://localhost:3000
+5. Access the dashboard at http://localhost:3000
 
 ## Project Structure
 
-- `/smart-contracts`: Smart contract code (EVM and Move)
-  - `/evm`: Solidity contracts for IOTA EVM (Layer 2)
-  - `/move`: Move language modules for IOTA Layer 1
-  - `/bridge`: Cross-layer bridge implementation
-- `/ai-model`: AI/ML models for risk assessment
-  - `/api`: Flask API for the risk model
-  - `/data-processing`: Data processing utilities
-  - `/models`: Trained model storage
-- `/frontend`: React.js web interface
-- `/backend`: Node.js API services
-- `/docs`: Documentation
-- `/scripts`: Deployment and setup scripts
-
-## Development Guide
-
-### Working with the Move Layer
-
-1. Update the Move modules in `smart-contracts/move/`
-2. Test changes with the Move SDK
-3. Deploy to IOTA Layer 1
-
-### Working with the EVM Layer
-
-1. Modify Solidity contracts in `smart-contracts/evm/`
-2. Test with Hardhat or Truffle
-3. Deploy to IOTA EVM using the deployment script
-
-### Enhancing the AI Model
-
-1. Update the model in `ai-model/risk_model.py`
-2. Add new features for improved risk assessment
-3. Retrain the model with real or simulated data
-4. Update the API endpoints as needed
-
-### Frontend Development
-
-1. Modify React components in `frontend/src/`
-2. Test changes locally
-3. Ensure UI integration with backend and blockchain
-
-## Testing
-
-Run unit tests for all components:
-
-```bash
-npm test
+```
+intellilend/
+├── ai-model/                  # AI risk assessment models
+│   ├── api/                   # Flask API for risk model
+│   ├── data-processing/       # Data processing utilities
+│   ├── feature-engineering/   # Feature extraction and engineering
+│   ├── models/                # Trained model storage
+│   ├── ai-helper.js           # JavaScript interface for AI
+│   └── risk_model.py          # Enhanced risk assessment model
+│
+├── backend/                   # Node.js backend services
+│   ├── controllers/           # API controllers
+│   ├── models/                # Data models
+│   ├── routes/                # API routes
+│   └── services/              # Business logic
+│
+├── config/                    # Configuration files
+│
+├── deployments/               # Deployment artifacts
+│
+├── docs/                      # Documentation
+│   ├── images/                # Images and diagrams
+│   └── api/                   # API documentation
+│
+├── frontend/                  # React frontend
+│   ├── public/                # Static assets
+│   └── src/                   # Source code
+│       ├── components/        # React components
+│       ├── pages/             # Page components
+│       ├── hooks/             # Custom React hooks
+│       └── services/          # API services
+│
+├── scripts/                   # Deployment and utility scripts
+│   └── demo.js                # Demo script
+│
+├── smart-contracts/           # Smart contracts
+│   ├── bridge/                # Cross-layer bridge contracts
+│   │   ├── CrossLayerBridge.sol       # Basic bridge implementation
+│   │   └── ZKCrossLayerBridge.sol     # Enhanced bridge with ZK proofs
+│   │
+│   ├── evm/                   # IOTA EVM smart contracts
+│   │   ├── contracts/         # Core contracts
+│   │   ├── interfaces/        # Contract interfaces
+│   │   ├── libraries/         # Solidity libraries
+│   │   ├── LendingPool.sol    # Main lending contract
+│   │   └── CrossChainLiquidity.sol    # Cross-chain module
+│   │
+│   └── move/                  # IOTA Move modules
+│       ├── sources/           # Move source files
+│       ├── tests/             # Move tests
+│       ├── asset.move         # Basic asset module
+│       └── enhanced_asset.move # Enhanced asset module with ZK proofs
+│
+├── tests/                     # Testing scripts
+├── .env                       # Environment variables
+├── .gitignore                 # Git ignore file
+├── hardhat.config.js          # Hardhat configuration
+├── package.json               # Node.js dependencies
+└── README.md                  # Project documentation
 ```
 
-### Testing Smart Contracts
+## Key Technical Innovations
 
-```bash
-cd smart-contracts
-npm run test
-```
+1. **Integrated Cross-Layer Security**
+   - Leveraging IOTA's dual-layer architecture for enhanced security
+   - Secure cross-layer messaging using zero-knowledge proofs
+   - Privacy-preserving communication between EVM and Move layers
 
-### Testing the AI Model
+2. **AI-Enhanced DeFi**
+   - Advanced machine learning for risk assessment
+   - Reinforcement learning for interest rate optimization
+   - Time-series prediction for early warning signals
+   - Privacy-preserving AI scoring
 
-```bash
-cd ai-model
-python -m unittest discover tests
-```
+3. **Cross-Chain Liquidity Optimization**
+   - AI-driven yield optimization across chains
+   - Risk-adjusted liquidity allocation
+   - Automated rebalancing based on market conditions
+   - Unified liquidity pool across blockchain networks
 
-### Testing the Backend
+4. **Privacy-Preserving Credit System**
+   - Zero-knowledge proofs for credit scoring
+   - Private identity verification
+   - Selective disclosure of verified claims
+   - Anonymous but verifiable risk assessment
 
-```bash
-cd backend
-npm test
-```
+## Future Enhancements
 
-## Resources
+1. **Enhanced AI Models**
+   - Integration with more data sources
+   - Federated learning for privacy-preserving training
+   - Advanced fraud detection
+   - Economic simulation-based risk assessment
 
-- IOTA Documentation: https://docs.iota.org/
-- IOTA EVM: https://evm.iota.org/
-- Developer Discord: https://discord.gg/iota-builders
-- Tutorials: https://docs.iota.org/developer/getting-started
+2. **Expanded Cross-Chain Support**
+   - Integration with additional blockchain networks
+   - Cross-chain collateralization
+   - Chain-agnostic lending pools
+   - Multi-chain yield optimization
+
+3. **Governance and Tokenomics**
+   - DAO-based governance model
+   - Dynamic protocol parameters
+   - Incentivized risk assessment
+   - Token-based governance voting
+
+4. **Advanced User Features**
+   - Personalized lending strategies
+   - Portfolio diversification tools
+   - Risk hedging mechanisms
+   - Credit score improvement recommendations
+
+## Contributing
+
+We welcome contributions from the community! Please check out our [Contribution Guidelines](./CONTRIBUTING.md) to get started.
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
 
 ## Acknowledgements
 
-This project was created for the IOTA DefAI Hackathon 2023.
+This project was created for the IOTA DefAI Hackathon 2023. We'd like to thank the IOTA Foundation for their support and the opportunity to build on the IOTA ecosystem.
+
+## Team
+
+- Daniel Johnson - Smart Contract Developer
+- Ana Garcia - AI/ML Engineer
+- Michael Chen - Frontend Developer
+- Sarah Parker - Move Developer
+- Robert Kim - Product Designer
+
+## Contact
+
+For any questions or feedback, please reach out to team@intellilend.io or join our Discord community.
