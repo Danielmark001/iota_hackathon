@@ -1,643 +1,994 @@
-module intellilend::lending_asset {
+module intellilend::core {
     use std::error;
     use std::signer;
     use std::string::{Self, String};
-    use std::option::{Self, Option};
     use std::vector;
     
-    /// Constants for error codes
-    const ENOT_AUTHORIZED: u64 = 1;
-    const EINVALID_RISK_SCORE: u64 = 2;
-    const EINVALID_ASSET_VALUE: u64 = 3;
-    const EASSET_NOT_FOUND: u64 = 4;
-    const EASSET_ALREADY_EXISTS: u64 = 5;
-    const EINVALID_COLLATERAL_FACTOR: u64 = 6;
-    const EINVALID_INTEREST_RATE: u64 = 7;
-    const ENOT_ENOUGH_COLLATERAL: u64 = 8;
-    const EASSET_FROZEN: u64 = 9;
+    use sui::object::{Self, ID, UID};
+    use sui::transfer;
+    use sui::tx_context::{Self, TxContext};
+    use sui::coin::{Self, Coin};
+    use sui::table::{Self, Table};
+    use sui::event;
+    use sui::balance::{Self, Balance};
+    use sui::clock::{Self, Clock};
+    use sui::dynamic_field as df;
     
-    /// Constants for configuration
-    const MAX_RISK_SCORE: u8 = 100;
-    const DEFAULT_RISK_SCORE: u8 = 50;
-    const DEFAULT_COLLATERAL_FACTOR: u8 = 75; // 75% LTV ratio
-    const MAX_COLLATERAL_FACTOR: u8 = 90; // Maximum 90% LTV ratio
-    const LIQUIDATION_THRESHOLD: u8 = 80; // 80% of collateral factor
-    const LIQUIDATION_BONUS: u8 = 10; // 10% bonus for liquidators
+    // Imported from enhanced_asset.move
+    use intellilend::enhanced_asset::{
+        EnhancedLendingAsset, 
+        IdentityProof, 
+        EnhancedCrossLayerMessage, 
+        EnhancedAssetRegistry,
+        RegistryAdminCap,
+        BridgeAdminCap,
+        IdentityVerifierCap
+    };
     
-    /// Represents a cross-chain message from Layer 2 EVM
-    struct CrossChainMessage has key {
-        id: ID,
-        sender: address,
-        message_type: String,
-        payload: vector<u8>,
-        processed: bool,
-        timestamp: u64,
-    }
+    /// One-time witness for the intellilend protocol
+    struct INTELLILEND has drop {}
     
-    /// Struct representing a risk profile for a user
-    struct RiskProfile has key {
-        id: ID,
-        owner: address,
-        risk_score: u8,
-        risk_factors: vector<RiskFactor>,
-        last_updated: u64,
-        credit_limit: u64,
-        recommended_interest_rate: u64,
-        recommended_collateral_factor: u8,
-    }
-    
-    /// Struct representing an individual risk factor
-    struct RiskFactor has store, drop {
-        factor_type: String,
-        score: u8,
-        weight: u8,
-        description: Option<String>,
-    }
-    
-    /// Struct representing a lending asset
-    struct LendingAsset has key {
-        id: ID,
-        asset_type: String, // e.g., "IOTA", "USD", "EUR", etc.
-        symbol: String,
-        value: u64,
-        owner: address,
-        is_collateral: bool,
-        collateral_factor: u8, // percentage (0-100)
-        interest_rate: u64, // basis points (0-10000)
-        risk_adjusted_rate: u64, // basis points (0-10000)
-        origination_timestamp: u64,
-        last_updated_timestamp: u64,
-        is_frozen: bool,
-    }
-    
-    /// Struct representing a borrow position
-    struct BorrowPosition has key {
-        id: ID,
-        borrower: address,
-        asset_type: String,
-        principal_amount: u64,
-        interest_accumulated: u64,
-        collateral_asset_ids: vector<ID>,
-        interest_rate: u64, // basis points
-        origination_timestamp: u64,
-        last_updated_timestamp: u64,
-        repayment_deadline: Option<u64>,
-        liquidation_threshold_crossed: bool,
-    }
-    
-    /// Registry for all lending assets in the system
-    struct AssetRegistry has key {
-        id: ID,
-        assets: vector<ID>,
-        asset_count: u64,
-        supported_asset_types: vector<String>,
-    }
-    
-    /// Registry for all borrow positions in the system
-    struct BorrowRegistry has key {
-        id: ID,
-        borrow_positions: vector<ID>,
-        position_count: u64,
-        total_borrowed_value: u64,
-    }
-    
-    /// Protocol configuration object
+    /// Protocol configuration
     struct ProtocolConfig has key {
-        id: ID,
-        admin: address,
-        pause_guardian: address,
-        treasury: address,
-        is_paused: bool,
-        protocol_fee: u64, // basis points
-        liquidation_incentive: u8, // percentage
-        cross_chain_bridge_address: address,
-        risk_model_version: u64,
-        last_config_update: u64,
+        id: UID,
+        // Interest rate parameters
+        base_interest_rate: u64, // in basis points (e.g., 300 = 3%)
+        interest_rate_slope1: u64, // in basis points
+        interest_rate_slope2: u64, // in basis points
+        optimal_utilization: u64, // in basis points (e.g., 8000 = 80%)
+        // Fee parameters
+        origination_fee: u64, // in basis points
+        liquidation_incentive: u64, // in basis points
+        // Risk parameters
+        collateral_factor: u64, // in basis points (e.g., 7500 = 75%)
+        liquidation_threshold: u64, // in basis points
+        min_loan_duration: u64, // minimum duration in seconds
+        // Protocol status
+        paused: bool,
+        // Admin capability
+        governance_cap: ID
     }
     
-    /// Events emitted by the protocol
-    
-    /// Event emitted when a new lending asset is created
-    struct AssetCreatedEvent has drop, store {
-        asset_id: ID,
-        asset_type: String,
-        owner: address,
-        value: u64,
-        timestamp: u64,
+    /// Governance capability for protocol management
+    struct GovernanceCap has key {
+        id: UID
     }
     
-    /// Event emitted when an asset is used as collateral
-    struct CollateralMarkedEvent has drop, store {
-        asset_id: ID,
-        owner: address,
-        value: u64,
-        collateral_factor: u8,
-        timestamp: u64,
+    /// Lending market for a specific asset
+    struct LendingMarket<phantom T> has key {
+        id: UID,
+        // Market assets
+        total_deposits: Balance<T>,
+        total_borrows: u64, // Scaled amount
+        // Market parameters
+        reserve_factor: u64, // in basis points
+        interest_rate_spread: u64, // in basis points
+        // Interest model
+        last_update_timestamp: u64,
+        cumulative_interest_rate: u64, // Scaled by 1e18
+        // Market statistics
+        utilization_rate: u64, // in basis points
+        borrow_interest_rate: u64, // in basis points
+        deposit_interest_rate: u64, // in basis points
+        // User data
+        deposits: Table<address, DepositInfo>,
+        borrows: Table<address, BorrowInfo>,
+        // Market status
+        is_active: bool,
+        // Configuration
+        config_id: ID
     }
     
-    /// Event emitted when a borrow position is created
-    struct BorrowPositionCreatedEvent has drop, store {
-        position_id: ID,
-        borrower: address,
-        asset_type: String,
+    /// Deposit information for a user
+    struct DepositInfo has store {
         amount: u64,
-        interest_rate: u64,
-        timestamp: u64,
+        scaled_amount: u64, // For interest calculation
+        last_update_timestamp: u64
     }
     
-    /// Event emitted when a risk score is updated
-    struct RiskScoreUpdatedEvent has drop, store {
+    /// Borrow information for a user
+    struct BorrowInfo has store {
+        amount: u64,
+        scaled_amount: u64, // For interest calculation
+        collateral_id: ID, // Enhanced asset used as collateral
+        interest_rate: u64, // Personalized rate in basis points
+        risk_score: u8, // User risk score (0-100)
+        start_time: u64,
+        last_update_timestamp: u64
+    }
+    
+    /// Cross-layer message processor for L1
+    struct MessageProcessor has key {
+        id: UID,
+        // Message processing
+        pending_messages: Table<ID, EnhancedCrossLayerMessage>,
+        processed_messages_count: u64,
+        failed_messages_count: u64,
+        // Processor settings
+        allowed_message_sources: vector<vector<u8>>, // List of allowed EVM addresses
+        // Capability references
+        registry_cap_id: ID,
+        bridge_cap_id: ID
+    }
+    
+    // Events
+    struct DepositEvent has copy, drop {
+        market_id: ID,
         user: address,
-        old_score: u8,
-        new_score: u8,
-        timestamp: u64,
+        amount: u64,
+        timestamp: u64
     }
     
-    /// Event emitted when a loan is repaid
-    struct LoanRepaidEvent has drop, store {
-        position_id: ID,
-        borrower: address,
-        amount_repaid: u64,
-        remaining_debt: u64,
-        timestamp: u64,
+    struct WithdrawEvent has copy, drop {
+        market_id: ID,
+        user: address,
+        amount: u64,
+        timestamp: u64
     }
     
-    /// Event emitted when a position is liquidated
-    struct LiquidationEvent has drop, store {
-        position_id: ID,
+    struct BorrowEvent has copy, drop {
+        market_id: ID,
+        user: address,
+        amount: u64,
+        collateral_id: ID,
+        interest_rate: u64,
+        timestamp: u64
+    }
+    
+    struct RepayEvent has copy, drop {
+        market_id: ID,
+        user: address,
+        amount: u64,
+        timestamp: u64
+    }
+    
+    struct LiquidationEvent has copy, drop {
+        market_id: ID,
         borrower: address,
         liquidator: address,
-        debt_asset_type: String,
-        debt_amount: u64,
-        collateral_asset_id: ID,
-        collateral_amount: u64,
-        timestamp: u64,
+        repay_amount: u64,
+        collateral_seized_id: ID,
+        timestamp: u64
     }
     
-    /// Initialize the protocol configuration
-    public fun initialize(admin: &signer) {
-        let admin_addr = signer::address_of(admin);
+    struct MessageProcessedEvent has copy, drop {
+        message_id: ID,
+        success: bool,
+        timestamp: u64
+    }
+    
+    struct ParameterUpdateEvent has copy, drop {
+        config_id: ID,
+        parameter_name: String,
+        old_value: u64,
+        new_value: u64,
+        timestamp: u64
+    }
+    
+    // Error codes
+    const ENOT_AUTHORIZED: u64 = 1;
+    const EMARKET_PAUSED: u64 = 2;
+    const EINVALID_AMOUNT: u64 = 3;
+    const EMARKET_NOT_FOUND: u64 = 4;
+    const EINSUFFICIENT_COLLATERAL: u64 = 5;
+    const EINSUFFICIENT_BALANCE: u64 = 6;
+    const EBORROW_LIMIT_EXCEEDED: u64 = 7;
+    const ENO_BORROWING_POSITION: u64 = 8;
+    const EBORROW_NOT_LIQUIDATABLE: u64 = 9;
+    const EINVALID_PARAMETER: u64 = 10;
+    const ECOLLATERAL_NOT_OWNED: u64 = 11;
+    const EMESSAGE_ALREADY_PROCESSED: u64 = 12;
+    const EMESSAGE_SOURCE_NOT_ALLOWED: u64 = 13;
+    const EINVALID_MESSAGE_SIGNATURE: u64 = 14;
+    
+    /// Initialize the lending protocol
+    fun init(witness: INTELLILEND, ctx: &mut TxContext) {
+        // Create governance capability
+        let governance_cap = GovernanceCap {
+            id: object::new(ctx)
+        };
         
-        // Create protocol config
+        let governance_cap_id = object::id(&governance_cap);
+        
+        // Create default protocol configuration
         let config = ProtocolConfig {
             id: object::new(ctx),
-            admin: admin_addr,
-            pause_guardian: admin_addr,
-            treasury: admin_addr,
-            is_paused: false,
-            protocol_fee: 50, // 0.5% protocol fee
-            liquidation_incentive: LIQUIDATION_BONUS,
-            cross_chain_bridge_address: admin_addr, // Temporary
-            risk_model_version: 1,
-            last_config_update: timestamp::now_seconds(),
+            base_interest_rate: 300, // 3%
+            interest_rate_slope1: 1000, // 10%
+            interest_rate_slope2: 5000, // 50%
+            optimal_utilization: 8000, // 80%
+            origination_fee: 10, // 0.1%
+            liquidation_incentive: 1000, // 10%
+            collateral_factor: 7500, // 75%
+            liquidation_threshold: 8300, // 83%
+            min_loan_duration: 300, // 5 minutes
+            paused: false,
+            governance_cap: governance_cap_id
         };
         
-        // Create asset registry
-        let asset_registry = AssetRegistry {
+        // Create message processor
+        let processor = MessageProcessor {
             id: object::new(ctx),
-            assets: vector::empty<ID>(),
-            asset_count: 0,
-            supported_asset_types: vector::empty<String>(),
+            pending_messages: table::new(ctx),
+            processed_messages_count: 0,
+            failed_messages_count: 0,
+            allowed_message_sources: vector::empty<vector<u8>>(),
+            registry_cap_id: object::id_from_address(@0), // Placeholder
+            bridge_cap_id: object::id_from_address(@0) // Placeholder
         };
         
-        // Add supported asset types
-        vector::push_back(&mut asset_registry.supported_asset_types, string::utf8(b"IOTA"));
-        vector::push_back(&mut asset_registry.supported_asset_types, string::utf8(b"USD"));
-        vector::push_back(&mut asset_registry.supported_asset_types, string::utf8(b"EUR"));
+        // Transfer governance capability to sender
+        transfer::transfer(governance_cap, tx_context::sender(ctx));
         
-        // Create borrow registry
-        let borrow_registry = BorrowRegistry {
-            id: object::new(ctx),
-            borrow_positions: vector::empty<ID>(),
-            position_count: 0,
-            total_borrowed_value: 0,
-        };
-        
-        // Move resources to admin account
-        transfer::transfer(config, admin_addr);
-        transfer::transfer(asset_registry, admin_addr);
-        transfer::transfer(borrow_registry, admin_addr);
+        // Share protocol configuration and message processor as immutable objects
+        transfer::share_object(config);
+        transfer::share_object(processor);
     }
     
-    /// Create a new lending asset
-    public fun create_asset(
-        account: &signer,
-        asset_type: String,
-        symbol: String,
-        value: u64,
-    ): ID {
-        let owner = signer::address_of(account);
+    /// Create a new lending market for an asset
+    public fun create_lending_market<T>(
+        admin: &signer,
+        config: &ProtocolConfig,
+        reserve_factor: u64,
+        interest_rate_spread: u64,
+        governance_cap: &GovernanceCap,
+        ctx: &mut TxContext
+    ) {
+        // Verify admin has the governance capability
+        assert!(object::id(governance_cap) == config.governance_cap, error::permission_denied(ENOT_AUTHORIZED));
         
-        // Validate input
-        assert!(value > 0, error::invalid_argument(EINVALID_ASSET_VALUE));
+        // Verify parameters are valid
+        assert!(reserve_factor <= 5000, error::invalid_argument(EINVALID_PARAMETER)); // Max 50%
+        assert!(interest_rate_spread <= 2000, error::invalid_argument(EINVALID_PARAMETER)); // Max 20%
         
-        // Create the asset
-        let asset = LendingAsset {
+        // Create new lending market
+        let market = LendingMarket<T> {
             id: object::new(ctx),
-            asset_type,
-            symbol,
-            value,
-            owner,
-            is_collateral: false,
-            collateral_factor: DEFAULT_COLLATERAL_FACTOR,
-            interest_rate: 0, // Not applicable for an asset until borrowed
-            risk_adjusted_rate: 0, // Will be calculated when borrowed
-            origination_timestamp: timestamp::now_seconds(),
-            last_updated_timestamp: timestamp::now_seconds(),
-            is_frozen: false,
+            total_deposits: balance::zero<T>(),
+            total_borrows: 0,
+            reserve_factor: reserve_factor,
+            interest_rate_spread: interest_rate_spread,
+            last_update_timestamp: tx_context::epoch(ctx),
+            cumulative_interest_rate: 1000000000000000000, // 1.0 in 1e18 scale
+            utilization_rate: 0,
+            borrow_interest_rate: config.base_interest_rate,
+            deposit_interest_rate: 0,
+            deposits: table::new(ctx),
+            borrows: table::new(ctx),
+            is_active: true,
+            config_id: object::id(config)
         };
         
-        let asset_id = object::id(&asset);
+        // Share market as an immutable object
+        transfer::share_object(market);
+    }
+    
+    /// Deposit assets into a lending market
+    public fun deposit<T>(
+        account: &signer,
+        market: &mut LendingMarket<T>,
+        coin: Coin<T>,
+        config: &ProtocolConfig,
+        ctx: &mut TxContext
+    ) {
+        // Check market is not paused
+        assert!(!config.paused && market.is_active, error::permission_denied(EMARKET_PAUSED));
         
-        // Update the asset registry
-        let registry = borrow_global_mut<AssetRegistry>(get_registry_address());
-        vector::push_back(&mut registry.assets, asset_id);
-        registry.asset_count = registry.asset_count + 1;
+        // Check amount is valid
+        let deposit_amount = coin::value(&coin);
+        assert!(deposit_amount > 0, error::invalid_argument(EINVALID_AMOUNT));
         
-        // Emit asset created event
-        event::emit(AssetCreatedEvent {
-            asset_id,
-            asset_type: asset.asset_type,
-            owner,
-            value,
-            timestamp: timestamp::now_seconds(),
+        // Update market interest rates
+        update_market_interest_rates(market, config, ctx);
+        
+        // Convert coin to balance and add to market deposits
+        let deposit_balance = coin::into_balance(coin);
+        
+        // Calculate scaled amount based on cumulative interest rate
+        let scaled_amount = (deposit_amount * 1000000000000000000) / market.cumulative_interest_rate;
+        
+        // Get sender address
+        let sender = signer::address_of(account);
+        
+        // Update or create user deposit info
+        if (table::contains(&market.deposits, sender)) {
+            let deposit_info = table::borrow_mut(&mut market.deposits, sender);
+            deposit_info.amount = deposit_info.amount + deposit_amount;
+            deposit_info.scaled_amount = deposit_info.scaled_amount + scaled_amount;
+            deposit_info.last_update_timestamp = tx_context::epoch(ctx);
+        } else {
+            let deposit_info = DepositInfo {
+                amount: deposit_amount,
+                scaled_amount: scaled_amount,
+                last_update_timestamp: tx_context::epoch(ctx)
+            };
+            table::add(&mut market.deposits, sender, deposit_info);
+        };
+        
+        // Add balance to market total
+        balance::join(&mut market.total_deposits, deposit_balance);
+        
+        // Recalculate utilization rate
+        update_utilization_rate(market);
+        
+        // Emit deposit event
+        event::emit(DepositEvent {
+            market_id: object::id(market),
+            user: sender,
+            amount: deposit_amount,
+            timestamp: tx_context::epoch(ctx)
+        });
+    }
+    
+    /// Withdraw assets from a lending market
+    public fun withdraw<T>(
+        account: &signer,
+        market: &mut LendingMarket<T>,
+        amount: u64,
+        config: &ProtocolConfig,
+        ctx: &mut TxContext
+    ): Coin<T> {
+        // Check market is not paused
+        assert!(!config.paused && market.is_active, error::permission_denied(EMARKET_PAUSED));
+        
+        // Check amount is valid
+        assert!(amount > 0, error::invalid_argument(EINVALID_AMOUNT));
+        
+        // Get sender address
+        let sender = signer::address_of(account);
+        
+        // Check user has a deposit and sufficient balance
+        assert!(table::contains(&market.deposits, sender), error::not_found(EINSUFFICIENT_BALANCE));
+        
+        // Update market interest rates
+        update_market_interest_rates(market, config, ctx);
+        
+        // Get user's current deposit info with updated amounts
+        let deposit_info = table::borrow_mut(&mut market.deposits, sender);
+        assert!(deposit_info.amount >= amount, error::invalid_argument(EINSUFFICIENT_BALANCE));
+        
+        // Calculate scaled amount to withdraw
+        let scaled_amount_to_withdraw = (amount * 1000000000000000000) / market.cumulative_interest_rate;
+        
+        // Update user deposit info
+        deposit_info.amount = deposit_info.amount - amount;
+        deposit_info.scaled_amount = deposit_info.scaled_amount - scaled_amount_to_withdraw;
+        deposit_info.last_update_timestamp = tx_context::epoch(ctx);
+        
+        // Remove user entry if balance is zero
+        if (deposit_info.amount == 0) {
+            table::remove(&mut market.deposits, sender);
+        };
+        
+        // Take balance from market total
+        let withdrawn_balance = balance::split(&mut market.total_deposits, amount);
+        
+        // Recalculate utilization rate
+        update_utilization_rate(market);
+        
+        // Emit withdraw event
+        event::emit(WithdrawEvent {
+            market_id: object::id(market),
+            user: sender,
+            amount: amount,
+            timestamp: tx_context::epoch(ctx)
         });
         
-        // Transfer asset to owner
-        transfer::transfer(asset, owner);
-        
-        asset_id
+        // Convert balance to coin and return
+        coin::from_balance(withdrawn_balance, ctx)
     }
     
-    /// Mark an asset as collateral
-    public fun mark_as_collateral(
+    /// Borrow assets from a lending market using an enhanced asset as collateral
+    public fun borrow<T>(
         account: &signer,
-        asset_id: ID,
-        collateral_factor: Option<u8>
-    ) acquires LendingAsset {
-        let owner = signer::address_of(account);
+        market: &mut LendingMarket<T>,
+        collateral: &EnhancedLendingAsset,
+        registry: &EnhancedAssetRegistry,
+        amount: u64,
+        config: &ProtocolConfig,
+        ctx: &mut TxContext
+    ): Coin<T> {
+        // Check market is not paused
+        assert!(!config.paused && market.is_active, error::permission_denied(EMARKET_PAUSED));
         
-        // Get asset
-        let asset = borrow_global_mut<LendingAsset>(object::id_address(&asset_id));
+        // Check amount is valid
+        assert!(amount > 0, error::invalid_argument(EINVALID_AMOUNT));
         
-        // Verify ownership
-        assert!(asset.owner == owner, error::permission_denied(ENOT_AUTHORIZED));
+        // Get sender address
+        let sender = signer::address_of(account);
         
-        // Check if asset is frozen
-        assert!(!asset.is_frozen, error::invalid_state(EASSET_FROZEN));
+        // Check collateral ownership
+        assert!(intellilend::enhanced_asset::is_owner(collateral, sender), error::permission_denied(ECOLLATERAL_NOT_OWNED));
         
-        // Mark as collateral
-        asset.is_collateral = true;
+        // Update market interest rates
+        update_market_interest_rates(market, config, ctx);
         
-        // Set collateral factor if provided, otherwise use default
-        if (option::is_some(&collateral_factor)) {
-            let factor = option::extract(&mut collateral_factor);
-            assert!(factor <= MAX_COLLATERAL_FACTOR, error::invalid_argument(EINVALID_COLLATERAL_FACTOR));
-            asset.collateral_factor = factor;
+        // Calculate maximum allowed borrow amount based on collateral value and risk score
+        let collateral_value = intellilend::enhanced_asset::get_value(collateral);
+        let risk_score = intellilend::enhanced_asset::get_risk_score(collateral);
+        
+        // Risk adjustment - higher risk score means lower collateral factor
+        let adjusted_collateral_factor = adjust_collateral_factor(config.collateral_factor, risk_score);
+        
+        let max_borrow_amount = (collateral_value * adjusted_collateral_factor) / 10000;
+        
+        // Check if the requested amount exceeds borrowing capacity
+        let current_borrow_amount = if (table::contains(&market.borrows, sender)) {
+            table::borrow(&market.borrows, sender).amount
+        } else {
+            0
         };
+        
+        assert!(current_borrow_amount + amount <= max_borrow_amount, error::invalid_argument(EBORROW_LIMIT_EXCEEDED));
+        
+        // Check if market has enough liquidity
+        assert!(balance::value(&market.total_deposits) >= amount, error::invalid_argument(EINSUFFICIENT_BALANCE));
+        
+        // Calculate scaled borrow amount based on cumulative interest rate
+        let scaled_amount = (amount * 1000000000000000000) / market.cumulative_interest_rate;
+        
+        // Calculate personalized interest rate based on risk score
+        let personalized_rate = calculate_personalized_interest_rate(market.borrow_interest_rate, risk_score);
+        
+        // Create or update borrow position
+        if (table::contains(&market.borrows, sender)) {
+            let borrow_info = table::borrow_mut(&mut market.borrows, sender);
+            borrow_info.amount = borrow_info.amount + amount;
+            borrow_info.scaled_amount = borrow_info.scaled_amount + scaled_amount;
+            borrow_info.interest_rate = personalized_rate; // Update to latest rate
+            borrow_info.risk_score = risk_score;
+            borrow_info.last_update_timestamp = tx_context::epoch(ctx);
+        } else {
+            let borrow_info = BorrowInfo {
+                amount: amount,
+                scaled_amount: scaled_amount,
+                collateral_id: object::id(collateral),
+                interest_rate: personalized_rate,
+                risk_score: risk_score,
+                start_time: tx_context::epoch(ctx),
+                last_update_timestamp: tx_context::epoch(ctx)
+            };
+            table::add(&mut market.borrows, sender, borrow_info);
+        };
+        
+        // Update market total borrows
+        market.total_borrows = market.total_borrows + scaled_amount;
+        
+        // Take balance from market deposits
+        let borrowed_balance = balance::split(&mut market.total_deposits, amount);
+        
+        // Recalculate utilization rate
+        update_utilization_rate(market);
+        
+        // Apply origination fee if configured
+        if (config.origination_fee > 0) {
+            let fee_amount = (amount * config.origination_fee) / 10000;
+            if (fee_amount > 0) {
+                // Implementation would transfer fee to protocol treasury
+                // For simplicity, just reduce the borrowed amount
+                let fee_balance = balance::split(&mut borrowed_balance, fee_amount);
+                balance::join(&mut market.total_deposits, fee_balance);
+            };
+        };
+        
+        // Emit borrow event
+        event::emit(BorrowEvent {
+            market_id: object::id(market),
+            user: sender,
+            amount: amount,
+            collateral_id: object::id(collateral),
+            interest_rate: personalized_rate,
+            timestamp: tx_context::epoch(ctx)
+        });
+        
+        // Convert balance to coin and return
+        coin::from_balance(borrowed_balance, ctx)
+    }
+    
+    /// Repay borrowed assets
+    public fun repay<T>(
+        account: &signer,
+        market: &mut LendingMarket<T>,
+        coin: Coin<T>,
+        config: &ProtocolConfig,
+        ctx: &mut TxContext
+    ) {
+        // Check market is not paused
+        assert!(!config.paused && market.is_active, error::permission_denied(EMARKET_PAUSED));
+        
+        // Check amount is valid
+        let repay_amount = coin::value(&coin);
+        assert!(repay_amount > 0, error::invalid_argument(EINVALID_AMOUNT));
+        
+        // Get sender address
+        let sender = signer::address_of(account);
+        
+        // Check user has a borrow position
+        assert!(table::contains(&market.borrows, sender), error::not_found(ENO_BORROWING_POSITION));
+        
+        // Update market interest rates
+        update_market_interest_rates(market, config, ctx);
+        
+        // Get user's current borrow info with updated amounts
+        let borrow_info = table::borrow_mut(&mut market.borrows, sender);
+        
+        // Cap repayment to actual debt
+        let actual_repay_amount = if (repay_amount > borrow_info.amount) {
+            borrow_info.amount
+        } else {
+            repay_amount
+        };
+        
+        // Convert coin to balance and add to market deposits
+        let repay_balance = coin::into_balance(coin);
+        
+        // If repay amount exceeds debt, return the excess
+        if (repay_amount > actual_repay_amount) {
+            let excess_balance = balance::split(&mut repay_balance, repay_amount - actual_repay_amount);
+            let excess_coin = coin::from_balance(excess_balance, ctx);
+            transfer::transfer(excess_coin, sender);
+        };
+        
+        // Calculate scaled amount to repay
+        let scaled_amount_to_repay = (actual_repay_amount * 1000000000000000000) / market.cumulative_interest_rate;
+        
+        // Update user borrow info
+        borrow_info.amount = borrow_info.amount - actual_repay_amount;
+        borrow_info.scaled_amount = borrow_info.scaled_amount - scaled_amount_to_repay;
+        borrow_info.last_update_timestamp = tx_context::epoch(ctx);
+        
+        // Remove user entry if fully repaid
+        if (borrow_info.amount == 0) {
+            table::remove(&mut market.borrows, sender);
+        };
+        
+        // Update market total borrows
+        market.total_borrows = market.total_borrows - scaled_amount_to_repay;
+        
+        // Add repayment to market deposits
+        balance::join(&mut market.total_deposits, repay_balance);
+        
+        // Recalculate utilization rate
+        update_utilization_rate(market);
+        
+        // Emit repay event
+        event::emit(RepayEvent {
+            market_id: object::id(market),
+            user: sender,
+            amount: actual_repay_amount,
+            timestamp: tx_context::epoch(ctx)
+        });
+    }
+    
+    /// Process a cross-layer message from L2
+    public fun process_message(
+        account: &signer,
+        processor: &mut MessageProcessor,
+        message: EnhancedCrossLayerMessage,
+        registry: &mut EnhancedAssetRegistry,
+        registry_cap: &RegistryAdminCap,
+        bridge_cap: &BridgeAdminCap,
+        ctx: &mut TxContext
+    ): bool {
+        // Verify admin has the registry capability
+        assert!(object::id(registry_cap) == processor.registry_cap_id, error::permission_denied(ENOT_AUTHORIZED));
+        
+        // Verify bridge capability
+        assert!(object::id(bridge_cap) == processor.bridge_cap_id, error::permission_denied(ENOT_AUTHORIZED));
+        
+        // Verify message sender is allowed
+        let message_sender = intellilend::enhanced_asset::get_message_sender(&message);
+        let is_allowed = false;
+        let i = 0;
+        let len = vector::length(&processor.allowed_message_sources);
+        
+        while (i < len) {
+            if (message_sender == *vector::borrow(&processor.allowed_message_sources, i)) {
+                is_allowed = true;
+                break;
+            };
+            i = i + 1;
+        };
+        
+        assert!(is_allowed, error::permission_denied(EMESSAGE_SOURCE_NOT_ALLOWED));
+        
+        // Verify message not already processed
+        assert!(!intellilend::enhanced_asset::is_processed(&message), error::invalid_argument(EMESSAGE_ALREADY_PROCESSED));
+        
+        // Get message ID
+        let message_id = object::id(&message);
+        
+        // Process message based on type
+        let success = false;
+        let message_type = intellilend::enhanced_asset::get_message_type(&message);
+        
+        if (message_type == string::utf8(b"RISK_SCORE_UPDATE")) {
+            success = process_risk_score_update(&message, registry, ctx);
+        } else if (message_type == string::utf8(b"COLLATERAL_CHANGE")) {
+            success = process_collateral_change(&message, registry, ctx);
+        } else if (message_type == string::utf8(b"LIQUIDATION")) {
+            success = process_liquidation(&message, registry, ctx);
+        } else {
+            // Unknown message type
+            success = false;
+        };
+        
+        // Update processor stats
+        if (success) {
+            processor.processed_messages_count = processor.processed_messages_count + 1;
+        } else {
+            processor.failed_messages_count = processor.failed_messages_count + 1;
+        };
+        
+        // Mark message as processed
+        intellilend::enhanced_asset::mark_as_processed(&mut message, success);
+        
+        // Store message for reference
+        table::add(&mut processor.pending_messages, message_id, message);
+        
+        // Emit event
+        event::emit(MessageProcessedEvent {
+            message_id: message_id,
+            success: success,
+            timestamp: tx_context::epoch(ctx)
+        });
+        
+        success
+    }
+    
+    /// Process a risk score update message
+    fun process_risk_score_update(
+        message: &EnhancedCrossLayerMessage,
+        registry: &mut EnhancedAssetRegistry,
+        ctx: &mut TxContext
+    ): bool {
+        // Extract user address and risk score from payload
+        // In a real implementation, we would use proper deserialization
+        // For simplicity, we'll implement a basic extraction
+        
+        let payload = intellilend::enhanced_asset::get_message_payload(message);
+        
+        // Check payload length
+        if (vector::length(&payload) < 21) {
+            return false
+        };
+        
+        // Extract address (first 20 bytes)
+        let address_bytes = vector::empty<u8>();
+        let i = 0;
+        while (i < 20) {
+            vector::push_back(&mut address_bytes, *vector::borrow(&payload, i));
+            i = i + 1;
+        };
+        
+        // Convert to address
+        let user_address = intellilend::enhanced_asset::convert_bytes_to_address(address_bytes);
+        
+        // Extract risk score (byte 20)
+        let risk_score = *vector::borrow(&payload, 20);
+        
+        // Update risk scores for all user assets
+        let user_assets = intellilend::enhanced_asset::get_user_assets(registry, user_address);
+        let assets_updated = false;
+        
+        let i = 0;
+        let len = vector::length(&user_assets);
+        
+        while (i < len) {
+            let asset_id = *vector::borrow(&user_assets, i);
+            
+            // In a real implementation, we would update each asset's risk score
+            // For simplicity, just mark as successfully updated
+            assets_updated = true;
+            
+            i = i + 1;
+        };
+        
+        assets_updated
+    }
+    
+    /// Process a collateral change message
+    fun process_collateral_change(
+        message: &EnhancedCrossLayerMessage,
+        registry: &mut EnhancedAssetRegistry,
+        ctx: &mut TxContext
+    ): bool {
+        // In a real implementation, this would update collateral status
+        // For demo, just return true
+        true
+    }
+    
+    /// Process a liquidation message
+    fun process_liquidation(
+        message: &EnhancedCrossLayerMessage,
+        registry: &mut EnhancedAssetRegistry,
+        ctx: &mut TxContext
+    ): bool {
+        // In a real implementation, this would handle liquidation
+        // For demo, just return true
+        true
+    }
+    
+    /// Update market interest rates
+    fun update_market_interest_rates<T>(
+        market: &mut LendingMarket<T>,
+        config: &ProtocolConfig,
+        ctx: &mut TxContext
+    ) {
+        // Check if update is needed
+        let current_time = tx_context::epoch(ctx);
+        if (current_time <= market.last_update_timestamp) {
+            return
+        };
+        
+        // Calculate time elapsed
+        let time_elapsed = current_time - market.last_update_timestamp;
+        
+        // Calculate interest based on current rates
+        if (market.total_borrows > 0) {
+            // Calculate interest rate per second (scaled down)
+            let interest_per_second = market.borrow_interest_rate / (365 * 24 * 60 * 60 * 100);
+            
+            // Calculate interest factor for elapsed time
+            let interest_factor = interest_per_second * time_elapsed;
+            
+            // Update cumulative interest rate
+            market.cumulative_interest_rate = market.cumulative_interest_rate + 
+                (market.cumulative_interest_rate * interest_factor) / 1000000000000000000;
+        };
+        
+        // Update interest rates based on current utilization
+        update_interest_rates(market, config);
         
         // Update timestamp
-        asset.last_updated_timestamp = timestamp::now_seconds();
-        
-        // Emit event
-        event::emit(CollateralMarkedEvent {
-            asset_id,
-            owner,
-            value: asset.value,
-            collateral_factor: asset.collateral_factor,
-            timestamp: timestamp::now_seconds(),
-        });
+        market.last_update_timestamp = current_time;
     }
     
-    /// Create a risk profile for a user
-    public fun create_risk_profile(
-        admin: &signer,
-        user: address,
-        risk_score: u8,
+    /// Update market interest rates based on utilization
+    fun update_interest_rates<T>(
+        market: &mut LendingMarket<T>,
+        config: &ProtocolConfig
     ) {
-        // Verify admin
-        let config = borrow_global<ProtocolConfig>(get_config_address());
-        assert!(signer::address_of(admin) == config.admin, error::permission_denied(ENOT_AUTHORIZED));
-        
-        // Validate risk score
-        assert!(risk_score <= MAX_RISK_SCORE, error::invalid_argument(EINVALID_RISK_SCORE));
-        
-        // Create risk factors vector
-        let risk_factors = vector::empty<RiskFactor>();
-        
-        // Add default risk factors
-        vector::push_back(&mut risk_factors, RiskFactor {
-            factor_type: string::utf8(b"REPAYMENT_HISTORY"),
-            score: 50,
-            weight: 35,
-            description: option::some(string::utf8(b"History of loan repayments")),
-        });
-        
-        vector::push_back(&mut risk_factors, RiskFactor {
-            factor_type: string::utf8(b"COLLATERAL_QUALITY"),
-            score: 50,
-            weight: 25,
-            description: option::some(string::utf8(b"Quality and stability of collateral assets")),
-        });
-        
-        vector::push_back(&mut risk_factors, RiskFactor {
-            factor_type: string::utf8(b"WALLET_ACTIVITY"),
-            score: 50,
-            weight: 20,
-            description: option::some(string::utf8(b"On-chain wallet activity patterns")),
-        });
-        
-        vector::push_back(&mut risk_factors, RiskFactor {
-            factor_type: string::utf8(b"CROSS_CHAIN_PRESENCE"),
-            score: 50,
-            weight: 10,
-            description: option::some(string::utf8(b"Activity across multiple blockchains")),
-        });
-        
-        vector::push_back(&mut risk_factors, RiskFactor {
-            factor_type: string::utf8(b"DEFI_EXPERIENCE"),
-            score: 50,
-            weight: 10,
-            description: option::some(string::utf8(b"Experience using DeFi protocols")),
-        });
-        
-        // Calculate recommendations based on risk score
-        let recommended_collateral_factor = calculate_recommended_collateral_factor(risk_score);
-        let recommended_interest_rate = calculate_recommended_interest_rate(risk_score);
-        let credit_limit = calculate_credit_limit(risk_score);
-        
-        // Create profile
-        let profile = RiskProfile {
-            id: object::new(ctx),
-            owner: user,
-            risk_score,
-            risk_factors,
-            last_updated: timestamp::now_seconds(),
-            credit_limit,
-            recommended_interest_rate,
-            recommended_collateral_factor,
+        // Calculate borrow interest rate using the interest rate model
+        if (market.utilization_rate <= config.optimal_utilization) {
+            // Below optimal: base_rate + slope1 * utilization
+            market.borrow_interest_rate = config.base_interest_rate + 
+                (config.interest_rate_slope1 * market.utilization_rate) / 10000;
+        } else {
+            // Above optimal: base_rate + slope1 * optimal + slope2 * (utilization - optimal)
+            let base_optimal_rate = config.base_interest_rate + 
+                (config.interest_rate_slope1 * config.optimal_utilization) / 10000;
+                
+            let excess_utilization = market.utilization_rate - config.optimal_utilization;
+            
+            market.borrow_interest_rate = base_optimal_rate + 
+                (config.interest_rate_slope2 * excess_utilization) / 10000;
         };
         
-        // Emit event
-        event::emit(RiskScoreUpdatedEvent {
-            user,
-            old_score: DEFAULT_RISK_SCORE, // Default starting point
-            new_score: risk_score,
-            timestamp: timestamp::now_seconds(),
-        });
-        
-        // Transfer profile to user
-        transfer::transfer(profile, user);
+        // Calculate deposit interest rate based on borrow rate, utilization, and reserve factor
+        market.deposit_interest_rate = (market.borrow_interest_rate * market.utilization_rate 
+            * (10000 - market.reserve_factor)) / (10000 * 10000);
     }
     
-    /// Update a user's risk score
-    public fun update_risk_score(
-        admin: &signer,
-        user: address,
-        new_score: u8,
-    ) acquires RiskProfile {
-        // Verify admin
-        let config = borrow_global<ProtocolConfig>(get_config_address());
-        assert!(signer::address_of(admin) == config.admin, error::permission_denied(ENOT_AUTHORIZED));
+    /// Update market utilization rate
+    fun update_utilization_rate<T>(market: &mut LendingMarket<T>) {
+        // Calculate total borrows in current value (not scaled)
+        let current_borrows = (market.total_borrows * market.cumulative_interest_rate) / 1000000000000000000;
         
-        // Validate risk score
-        assert!(new_score <= MAX_RISK_SCORE, error::invalid_argument(EINVALID_RISK_SCORE));
-        
-        // Get user profile
-        let profile = borrow_global_mut<RiskProfile>(user);
-        let old_score = profile.risk_score;
-        
-        // Update risk score
-        profile.risk_score = new_score;
-        
-        // Update recommendations
-        profile.recommended_collateral_factor = calculate_recommended_collateral_factor(new_score);
-        profile.recommended_interest_rate = calculate_recommended_interest_rate(new_score);
-        profile.credit_limit = calculate_credit_limit(new_score);
-        profile.last_updated = timestamp::now_seconds();
-        
-        // Emit event
-        event::emit(RiskScoreUpdatedEvent {
-            user,
-            old_score,
-            new_score,
-            timestamp: timestamp::now_seconds(),
-        });
+        // Calculate utilization rate as borrows / deposits (in basis points)
+        if (balance::value(&market.total_deposits) > 0) {
+            market.utilization_rate = (current_borrows * 10000) / balance::value(&market.total_deposits);
+        } else {
+            market.utilization_rate = 0;
+        };
     }
     
-    /// Process a cross-chain message from Layer 2 EVM
-    public fun process_cross_chain_message(
+    /// Adjust collateral factor based on risk score
+    fun adjust_collateral_factor(base_cf: u64, risk_score: u8): u64 {
+        // Higher risk means lower collateral factor
+        if (risk_score <= 20) {
+            // Very low risk - increase collateral factor by up to 5%
+            return base_cf + 500;
+        } else if (risk_score <= 40) {
+            // Low risk - increase collateral factor by up to 2.5%
+            return base_cf + 250;
+        } else if (risk_score <= 60) {
+            // Medium risk - use base collateral factor
+            return base_cf;
+        } else if (risk_score <= 80) {
+            // High risk - decrease collateral factor by up to 5%
+            return if (base_cf >= 500) { base_cf - 500 } else { base_cf / 2 };
+        } else {
+            // Very high risk - decrease collateral factor by up to 10%
+            return if (base_cf >= 1000) { base_cf - 1000 } else { base_cf / 3 };
+        }
+    }
+    
+    /// Calculate personalized interest rate based on risk score
+    fun calculate_personalized_interest_rate(base_rate: u64, risk_score: u8): u64 {
+        // Higher risk means higher interest rate
+        // Risk premium increases with risk score
+        
+        let risk_premium = if (risk_score <= 20) {
+            // Very low risk - minimal premium
+            0
+        } else if (risk_score <= 40) {
+            // Low risk - small premium
+            100 // 1%
+        } else if (risk_score <= 60) {
+            // Medium risk - moderate premium
+            300 // 3%
+        } else if (risk_score <= 80) {
+            // High risk - significant premium
+            600 // 6%
+        } else {
+            // Very high risk - large premium
+            1000 // 10%
+        };
+        
+        base_rate + risk_premium
+    }
+    
+    /// Update protocol parameters (governance function)
+    public fun update_protocol_parameter(
         admin: &signer,
-        message_id: vector<u8>,
-        sender: address,
-        message_type: String,
-        payload: vector<u8>,
+        config: &mut ProtocolConfig,
+        parameter_name: String,
+        new_value: u64,
+        governance_cap: &GovernanceCap,
+        ctx: &mut TxContext
     ) {
-        // Verify admin
-        let config = borrow_global<ProtocolConfig>(get_config_address());
-        assert!(signer::address_of(admin) == config.admin, error::permission_denied(ENOT_AUTHORIZED));
+        // Verify admin has the governance capability
+        assert!(object::id(governance_cap) == config.governance_cap, error::permission_denied(ENOT_AUTHORIZED));
         
-        // Create message object
-        let message = CrossChainMessage {
-            id: object::new(ctx),
-            sender,
-            message_type,
-            payload,
-            processed: false,
-            timestamp: timestamp::now_seconds(),
+        // Store old value for event
+        let old_value = if (parameter_name == string::utf8(b"base_interest_rate")) {
+            let old = config.base_interest_rate;
+            config.base_interest_rate = new_value;
+            old
+        } else if (parameter_name == string::utf8(b"interest_rate_slope1")) {
+            let old = config.interest_rate_slope1;
+            config.interest_rate_slope1 = new_value;
+            old
+        } else if (parameter_name == string::utf8(b"interest_rate_slope2")) {
+            let old = config.interest_rate_slope2;
+            config.interest_rate_slope2 = new_value;
+            old
+        } else if (parameter_name == string::utf8(b"optimal_utilization")) {
+            let old = config.optimal_utilization;
+            config.optimal_utilization = new_value;
+            old
+        } else if (parameter_name == string::utf8(b"origination_fee")) {
+            let old = config.origination_fee;
+            config.origination_fee = new_value;
+            old
+        } else if (parameter_name == string::utf8(b"liquidation_incentive")) {
+            let old = config.liquidation_incentive;
+            config.liquidation_incentive = new_value;
+            old
+        } else if (parameter_name == string::utf8(b"collateral_factor")) {
+            let old = config.collateral_factor;
+            config.collateral_factor = new_value;
+            old
+        } else if (parameter_name == string::utf8(b"liquidation_threshold")) {
+            let old = config.liquidation_threshold;
+            config.liquidation_threshold = new_value;
+            old
+        } else if (parameter_name == string::utf8(b"min_loan_duration")) {
+            let old = config.min_loan_duration;
+            config.min_loan_duration = new_value;
+            old
+        } else {
+            abort error::invalid_argument(EINVALID_PARAMETER)
         };
         
-        // If message is a risk score update, process it immediately
-        if (string::utf8(b"RISK_SCORE_UPDATE") == message.message_type) {
-            // Extract user address and risk score from payload
-            // In a real implementation, this would properly deserialize the payload
-            // For simplicity, we're not implementing the full deserialization here
-            
-            // Mark as processed
-            message.processed = true;
-        };
-        
-        // Store message
-        transfer::transfer(message, config.admin);
-    }
-    
-    /// Create a borrow position
-    public fun create_borrow_position(
-        account: &signer,
-        asset_type: String,
-        amount: u64,
-        collateral_asset_ids: vector<ID>,
-    ) acquires LendingAsset, RiskProfile, BorrowRegistry, ProtocolConfig {
-        let borrower = signer::address_of(account);
-        
-        // Check if protocol is paused
-        let config = borrow_global<ProtocolConfig>(get_config_address());
-        assert!(!config.is_paused, error::invalid_state(EASSET_FROZEN));
-        
-        // Verify collateral is sufficient
-        let total_collateral_value = calculate_collateral_value(collateral_asset_ids, borrower);
-        let risk_profile = borrow_global<RiskProfile>(borrower);
-        
-        // Calculate maximum borrowable amount based on collateral and risk
-        let max_borrow = (total_collateral_value * (risk_profile.recommended_collateral_factor as u64)) / 100;
-        assert!(amount <= max_borrow, error::invalid_argument(ENOT_ENOUGH_COLLATERAL));
-        
-        // Calculate interest rate based on risk score
-        let interest_rate = risk_profile.recommended_interest_rate;
-        
-        // Create borrow position
-        let position = BorrowPosition {
-            id: object::new(ctx),
-            borrower,
-            asset_type,
-            principal_amount: amount,
-            interest_accumulated: 0,
-            collateral_asset_ids,
-            interest_rate,
-            origination_timestamp: timestamp::now_seconds(),
-            last_updated_timestamp: timestamp::now_seconds(),
-            repayment_deadline: option::none(), // No fixed deadline
-            liquidation_threshold_crossed: false,
-        };
-        
-        let position_id = object::id(&position);
-        
-        // Update borrow registry
-        let registry = borrow_global_mut<BorrowRegistry>(get_registry_address());
-        vector::push_back(&mut registry.borrow_positions, position_id);
-        registry.position_count = registry.position_count + 1;
-        registry.total_borrowed_value = registry.total_borrowed_value + amount;
-        
-        // Mark collateral assets as frozen
-        for (i in 0..vector::length(&collateral_asset_ids)) {
-            let asset_id = *vector::borrow(&collateral_asset_ids, i);
-            let asset = borrow_global_mut<LendingAsset>(object::id_address(&asset_id));
-            asset.is_frozen = true;
-        };
-        
-        // Emit event
-        event::emit(BorrowPositionCreatedEvent {
-            position_id,
-            borrower,
-            asset_type,
-            amount,
-            interest_rate,
-            timestamp: timestamp::now_seconds(),
-        });
-        
-        // Transfer position to borrower
-        transfer::transfer(position, borrower);
-    }
-    
-    /// Repay a loan (partial or full)
-    public fun repay_loan(
-        account: &signer,
-        position_id: ID,
-        repay_amount: u64,
-    ) acquires BorrowPosition, BorrowRegistry {
-        let user = signer::address_of(account);
-        
-        // Get borrow position
-        let position = borrow_global_mut<BorrowPosition>(object::id_address(&position_id));
-        
-        // Verify ownership
-        assert!(position.borrower == user, error::permission_denied(ENOT_AUTHORIZED));
-        
-        // Calculate total debt (principal + interest)
-        let total_debt = position.principal_amount + position.interest_accumulated;
-        
-        // Ensure repay amount is valid
-        assert!(repay_amount <= total_debt, error::invalid_argument(EINVALID_ASSET_VALUE));
-        
-        // Update position
-        position.principal_amount = 
-            if (repay_amount >= position.principal_amount) 
-                0 
-            else 
-                position.principal_amount - repay_amount;
-                
-        position.interest_accumulated = 
-            if (repay_amount > position.principal_amount) 
-                position.interest_accumulated - (repay_amount - position.principal_amount)
-            else 
-                position.interest_accumulated;
-                
-        position.last_updated_timestamp = timestamp::now_seconds();
-        
-        // Update remaining debt
-        let remaining_debt = position.principal_amount + position.interest_accumulated;
-        
-        // Update registry
-        let registry = borrow_global_mut<BorrowRegistry>(get_registry_address());
-        registry.total_borrowed_value = registry.total_borrowed_value - repay_amount;
-        
-        // If fully repaid, release collateral
-        if (remaining_debt == 0) {
-            // In a real implementation, this would release the collateral
-            // For simplicity, we're not implementing the full collateral release here
-        };
-        
-        // Emit event
-        event::emit(LoanRepaidEvent {
-            position_id,
-            borrower: user,
-            amount_repaid: repay_amount,
-            remaining_debt,
-            timestamp: timestamp::now_seconds(),
+        // Emit parameter update event
+        event::emit(ParameterUpdateEvent {
+            config_id: object::id(config),
+            parameter_name: parameter_name,
+            old_value: old_value,
+            new_value: new_value,
+            timestamp: tx_context::epoch(ctx)
         });
     }
     
-    /// Calculate collateral value for a list of asset IDs
-    fun calculate_collateral_value(
-        asset_ids: vector<ID>,
-        owner: address,
-    ): u64 acquires LendingAsset {
-        let total_value = 0u64;
+    /// Set protocol pause state (governance function)
+    public fun set_protocol_pause(
+        admin: &signer,
+        config: &mut ProtocolConfig,
+        paused: bool,
+        governance_cap: &GovernanceCap,
+        ctx: &mut TxContext
+    ) {
+        // Verify admin has the governance capability
+        assert!(object::id(governance_cap) == config.governance_cap, error::permission_denied(ENOT_AUTHORIZED));
         
-        for (i in 0..vector::length(&asset_ids)) {
-            let asset_id = *vector::borrow(&asset_ids, i);
-            let asset = borrow_global<LendingAsset>(object::id_address(&asset_id));
-            
-            // Verify ownership
-            assert!(asset.owner == owner, error::permission_denied(ENOT_AUTHORIZED));
-            
-            // Add value to total
-            total_value = total_value + asset.value;
+        // Update pause state
+        config.paused = paused;
+    }
+    
+    /// Set market active state (governance function)
+    public fun set_market_active<T>(
+        admin: &signer,
+        market: &mut LendingMarket<T>,
+        active: bool,
+        governance_cap: &GovernanceCap,
+        ctx: &mut TxContext
+    ) {
+        // Verify admin has the governance capability
+        assert!(object::id(governance_cap) == market.config_id, error::permission_denied(ENOT_AUTHORIZED));
+        
+        // Update active state
+        market.is_active = active;
+    }
+    
+    /// Add an allowed message source to the processor
+    public fun add_allowed_message_source(
+        admin: &signer,
+        processor: &mut MessageProcessor,
+        source: vector<u8>,
+        registry_cap: &RegistryAdminCap,
+        ctx: &mut TxContext
+    ) {
+        // Verify admin has the registry capability
+        assert!(object::id(registry_cap) == processor.registry_cap_id, error::permission_denied(ENOT_AUTHORIZED));
+        
+        // Add source if not already present
+        let i = 0;
+        let len = vector::length(&processor.allowed_message_sources);
+        let exists = false;
+        
+        while (i < len) {
+            if (*vector::borrow(&processor.allowed_message_sources, i) == source) {
+                exists = true;
+                break;
+            };
+            i = i + 1;
         };
         
-        total_value
+        if (!exists) {
+            vector::push_back(&mut processor.allowed_message_sources, source);
+        };
     }
     
-    /// Calculate recommended collateral factor based on risk score
-    fun calculate_recommended_collateral_factor(risk_score: u8): u8 {
-        // Higher risk score means lower collateral factor
-        // 0 risk = 90% collateral factor, 100 risk = 50% collateral factor
-        MAX_COLLATERAL_FACTOR - ((risk_score as u8) * (MAX_COLLATERAL_FACTOR - 50) / 100)
+    /// Remove an allowed message source from the processor
+    public fun remove_allowed_message_source(
+        admin: &signer,
+        processor: &mut MessageProcessor,
+        source: vector<u8>,
+        registry_cap: &RegistryAdminCap,
+        ctx: &mut TxContext
+    ) {
+        // Verify admin has the registry capability
+        assert!(object::id(registry_cap) == processor.registry_cap_id, error::permission_denied(ENOT_AUTHORIZED));
+        
+        // Remove source if present
+        let i = 0;
+        let len = vector::length(&processor.allowed_message_sources);
+        
+        while (i < len) {
+            if (*vector::borrow(&processor.allowed_message_sources, i) == source) {
+                vector::remove(&mut processor.allowed_message_sources, i);
+                break;
+            };
+            i = i + 1;
+        };
     }
     
-    /// Calculate recommended interest rate based on risk score
-    fun calculate_recommended_interest_rate(risk_score: u8): u64 {
-        // Higher risk score means higher interest rate
-        // Base rate of 500 basis points (5%) plus risk premium
-        // 0 risk = 5% APR, 100 risk = 15% APR
-        500u64 + ((risk_score as u64) * 1000 / 100)
-    }
-    
-    /// Calculate credit limit based on risk score
-    fun calculate_credit_limit(risk_score: u8): u64 {
-        // Higher risk score means lower credit limit
-        // Base limit of 10,000 units
-        // 0 risk = 10,000, 100 risk = 1,000
-        10000u64 - ((risk_score as u64) * 9000 / 100)
-    }
-    
-    /// Get the address where the registry is stored
-    fun get_registry_address(): address {
-        @intellilend
-    }
-    
-    /// Get the address where the config is stored
-    fun get_config_address(): address {
-        @intellilend
+    /// Set capability IDs for the processor
+    public fun set_processor_capabilities(
+        admin: &signer,
+        processor: &mut MessageProcessor,
+        registry_cap: &RegistryAdminCap,
+        bridge_cap: &BridgeAdminCap,
+        ctx: &mut TxContext
+    ) {
+        // Verify sender is owner of both capabilities
+        assert!(object::is_owner(&registry_cap.id, signer::address_of(admin)), error::permission_denied(ENOT_AUTHORIZED));
+        assert!(object::is_owner(&bridge_cap.id, signer::address_of(admin)), error::permission_denied(ENOT_AUTHORIZED));
+        
+        // Set capability IDs
+        processor.registry_cap_id = object::id(registry_cap);
+        processor.bridge_cap_id = object::id(bridge_cap);
     }
 }

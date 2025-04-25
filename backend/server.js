@@ -1,464 +1,365 @@
+/**
+ * IntelliLend Backend Server
+ * 
+ * This server provides APIs for the IntelliLend protocol, handling AI risk assessment,
+ * cross-chain operations, and interacting with IOTA smart contracts.
+ */
+
 const express = require('express');
 const cors = require('cors');
-const { ethers } = require('ethers');
-const axios = require('axios');
-const dotenv = require('dotenv');
 const bodyParser = require('body-parser');
-const path = require('path');
-const fs = require('fs');
+const { ethers } = require('ethers');
+const morgan = require('morgan');
+const helmet = require('helmet');
+const compression = require('compression');
+const rateLimit = require('express-rate-limit');
+const dotenv = require('dotenv');
 
-// Configuration
+// Load AI integration
+const AIIntegration = require('../ai-model/api/ai_integration');
+
+// Load utilities and middleware
+const { authenticate } = require('./middleware/auth');
+const { validateRequest } = require('./middleware/validation');
+const { cacheMiddleware } = require('./middleware/cache');
+const logger = require('./utils/logger');
+
+// Load environment variables
 dotenv.config();
-const app = express();
-const port = process.env.PORT || 3001;
-const AI_MODEL_API = process.env.AI_MODEL_API || 'http://localhost:5000';
-const USE_MOCKS = process.env.USE_MOCKS === 'true';
 
-// Middleware
+// Initialize express app
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+// Security and performance middleware
+app.use(helmet());
+app.use(compression());
 app.use(cors());
+app.use(morgan('combined'));
 app.use(bodyParser.json());
 
-// Contract ABIs and addresses
-const LENDING_POOL_ADDRESS = process.env.LENDING_POOL_ADDRESS || '0x0000000000000000000000000000000000000000';
-const BRIDGE_ADDRESS = process.env.BRIDGE_ADDRESS || '0x0000000000000000000000000000000000000000';
+// Apply rate limiting
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP, please try again later'
+});
+app.use('/api/', apiLimiter);
 
-// Initialize provider and contracts
-let provider, lendingPoolContract, bridgeContract;
+// Initialize AI Integration
+const aiConfig = {
+  provider: process.env.IOTA_EVM_RPC_URL || 'http://localhost:8545',
+  lendingPoolAddress: process.env.LENDING_POOL_ADDRESS,
+  zkVerifierAddress: process.env.ZK_VERIFIER_ADDRESS,
+  zkBridgeAddress: process.env.ZK_BRIDGE_ADDRESS,
+  modelPath: process.env.AI_MODEL_PATH || '../ai-model/models',
+  useLocalModel: process.env.USE_LOCAL_MODEL === 'true',
+  apiUrl: process.env.AI_API_URL || 'http://localhost:5000',
+  enableCrossLayer: process.env.ENABLE_CROSS_LAYER === 'true'
+};
 
-// Check if we should use mocks
-if (USE_MOCKS) {
-  console.log('Using mock implementations for contracts');
-  
+const aiIntegration = new AIIntegration(aiConfig);
+
+// If admin private key is provided, set wallet for transactions
+if (process.env.ADMIN_PRIVATE_KEY) {
   try {
-    // Load mock adapter
-    const mockAdapter = require('./mocks/adapter');
-    lendingPoolContract = mockAdapter.getContract('LendingPool', LENDING_POOL_ADDRESS);
-    bridgeContract = mockAdapter.getContract('Bridge', BRIDGE_ADDRESS);
+    aiIntegration.setWallet(process.env.ADMIN_PRIVATE_KEY);
+    logger.info('Admin wallet connected for backend operations');
   } catch (error) {
-    console.error('Error loading mock implementations:', error);
-    process.exit(1);
-  }
-} else {
-  // Use real blockchain connection
-  try {
-    console.log('Connecting to IOTA EVM network...');
-    provider = new ethers.providers.JsonRpcProvider(process.env.IOTA_EVM_RPC_URL);
-    const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
-    
-    // Contract ABIs (simplified for now)
-    const LENDING_POOL_ABI = [
-      "function deposits(address user) external view returns (uint256)",
-      "function borrows(address user) external view returns (uint256)",
-      "function collaterals(address user) external view returns (uint256)",
-      "function riskScores(address user) external view returns (uint256)",
-      "function calculateInterestRate(address user) external view returns (uint256)",
-      "function getHealthFactor(address user) external view returns (uint256)",
-      "function updateRiskScore(address user, uint256 score) external",
-      "function totalDeposits() external view returns (uint256)",
-      "function totalBorrows() external view returns (uint256)",
-      "function totalCollateral() external view returns (uint256)"
-    ];
-    
-    const BRIDGE_ABI = [
-      "function sendMessageToL1(bytes32 targetAddress, string calldata messageType, bytes calldata payload, uint256 gasLimit) external payable returns (bytes32)",
-      "function getMessageIdsBySender(address sender) external view returns (bytes32[] memory)",
-      "function messages(bytes32 messageId) external view returns (bytes32, address, bytes32, bytes, uint256, uint8, uint8, string, uint256, uint256)"
-    ];
-    
-    lendingPoolContract = new ethers.Contract(
-      LENDING_POOL_ADDRESS,
-      LENDING_POOL_ABI,
-      wallet
-    );
-    
-    bridgeContract = new ethers.Contract(
-      BRIDGE_ADDRESS,
-      BRIDGE_ABI,
-      wallet
-    );
-  } catch (error) {
-    console.error('Error connecting to blockchain:', error);
-    console.log('Falling back to mock implementations...');
-    
-    // Load mock adapter
-    try {
-      const mockAdapter = require('./mocks/adapter');
-      lendingPoolContract = mockAdapter.getContract('LendingPool', LENDING_POOL_ADDRESS);
-      bridgeContract = mockAdapter.getContract('Bridge', BRIDGE_ADDRESS);
-    } catch (mockError) {
-      console.error('Error loading mock implementations:', mockError);
-      process.exit(1);
-    }
+    logger.error('Error connecting admin wallet:', error);
   }
 }
 
-/**
- * Get user lending data from the blockchain
- */
-app.get('/api/user/:address', async (req, res) => {
+// API Routes
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: Date.now() });
+});
+
+// User profile endpoint
+app.get('/api/user/:address', cacheMiddleware(60), async (req, res) => {
   try {
     const { address } = req.params;
     
-    // Get user data from the contract
-    const deposits = await lendingPoolContract.deposits(address);
-    const borrows = await lendingPoolContract.borrows(address);
-    const collateral = await lendingPoolContract.collaterals(address);
-    const riskScore = await lendingPoolContract.riskScores(address);
-    const interestRate = await lendingPoolContract.calculateInterestRate(address);
-    const healthFactor = await lendingPoolContract.getHealthFactor(address);
+    // Validate Ethereum address
+    if (!ethers.utils.isAddress(address)) {
+      return res.status(400).json({ error: 'Invalid Ethereum address' });
+    }
     
+    // Fetch user data
+    const userData = await aiIntegration.fetchUserData(address);
+    
+    // Calculate health factor
+    const liquidationThreshold = 0.83; // 83%
+    const collateralValue = parseFloat(userData.collaterals);
+    const borrowValue = parseFloat(userData.borrows);
+    
+    const healthFactor = borrowValue > 0 
+      ? (collateralValue * liquidationThreshold) / borrowValue 
+      : 999;
+    
+    // Calculate interest rate
+    const baseRate = 3;
+    const riskPremium = Math.floor(userData.riskScore / 10);
+    const interestRate = baseRate + riskPremium;
+    
+    // Return user stats
     res.json({
-      deposits: ethers.utils.formatEther(deposits),
-      borrows: ethers.utils.formatEther(borrows),
-      collateral: ethers.utils.formatEther(collateral),
-      riskScore: riskScore.toNumber(),
-      interestRate: interestRate.toNumber(),
-      healthFactor: healthFactor.toNumber() / 100, // Convert to decimal (e.g., 1.5)
-      timestamp: new Date().toISOString()
+      address,
+      deposits: parseFloat(userData.deposits),
+      borrows: parseFloat(userData.borrows),
+      collateral: parseFloat(userData.collaterals),
+      riskScore: userData.riskScore,
+      interestRate,
+      healthFactor,
+      identityVerified: userData.identityVerified || false,
+      lastUpdated: userData.timestamp || Date.now()
     });
   } catch (error) {
-    console.error('Error fetching user data:', error);
-    res.status(500).json({ error: 'Failed to fetch user data' });
+    logger.error(`Error fetching user ${req.params.address}:`, error);
+    res.status(500).json({ error: 'Error fetching user data', message: error.message });
   }
 });
 
-/**
- * Get market statistics
- */
-app.get('/api/market', async (req, res) => {
+// Market data endpoint
+app.get('/api/market', cacheMiddleware(300), async (req, res) => {
   try {
-    // Fetch actual data from the contract
-    const totalDeposits = await lendingPoolContract.totalDeposits();
-    const totalBorrows = await lendingPoolContract.totalBorrows();
-    const totalCollateral = await lendingPoolContract.totalCollateral();
+    // In a production environment, this would fetch real data from the contracts
+    // For demo purposes, we'll generate simulated market data
     
-    // Calculate utilization rate
-    const utilizationRate = totalDeposits.gt(0) 
-      ? totalBorrows.mul(100).div(totalDeposits).toNumber() 
-      : 0;
+    const totalDeposits = 500000;
+    const totalBorrows = 350000;
+    const totalCollateral = 750000;
+    const utilizationRate = Math.round((totalBorrows / totalDeposits) * 100);
     
     res.json({
-      totalDeposits: ethers.utils.formatEther(totalDeposits),
-      totalBorrows: ethers.utils.formatEther(totalBorrows),
-      totalCollateral: ethers.utils.formatEther(totalCollateral),
+      totalDeposits,
+      totalBorrows,
+      totalCollateral,
       utilizationRate,
-      timestamp: new Date().toISOString()
+      lastUpdated: Date.now()
     });
   } catch (error) {
-    console.error('Error fetching market data:', error);
-    res.status(500).json({ error: 'Failed to fetch market data' });
+    logger.error('Error fetching market data:', error);
+    res.status(500).json({ error: 'Error fetching market data', message: error.message });
   }
 });
 
-/**
- * Update risk score based on AI model prediction
- */
-app.post('/api/risk-assessment', async (req, res) => {
+// Historical data endpoint
+app.get('/api/history/:address', cacheMiddleware(600), async (req, res) => {
+  try {
+    const { address } = req.params;
+    
+    // Validate Ethereum address
+    if (!ethers.utils.isAddress(address)) {
+      return res.status(400).json({ error: 'Invalid Ethereum address' });
+    }
+    
+    // Generate chart data
+    // In a production environment, this would fetch historical data from a database
+    
+    // Generate 30 days of history
+    const days = 30;
+    const labels = [];
+    const deposits = [];
+    const borrows = [];
+    const riskScores = [];
+    
+    for (let i = days; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      labels.push(date.toLocaleDateString());
+      
+      // Generate simulated data with realistic trends
+      const baseDeposit = 100 + Math.random() * 50;
+      const baseBorrow = 50 + Math.random() * 30;
+      const baseRisk = 30 + Math.random() * 20;
+      
+      // Add some trend (increasing deposits, fluctuating borrows)
+      const deposit = baseDeposit + (days - i) * 2;
+      const borrow = baseBorrow + Math.sin(i / 5) * 15;
+      const risk = baseRisk - Math.cos(i / 7) * 10;
+      
+      deposits.push(deposit);
+      borrows.push(borrow);
+      riskScores.push(risk);
+    }
+    
+    // Format for Chart.js
+    res.json({
+      labels,
+      datasets: [
+        {
+          label: 'Deposits',
+          data: deposits,
+          borderColor: '#4caf50',
+          backgroundColor: 'rgba(76, 175, 80, 0.1)',
+          fill: true
+        },
+        {
+          label: 'Borrows',
+          data: borrows,
+          borderColor: '#2196f3',
+          backgroundColor: 'rgba(33, 150, 243, 0.1)',
+          fill: true
+        },
+        {
+          label: 'Risk Score',
+          data: riskScores,
+          borderColor: '#f44336',
+          backgroundColor: 'rgba(244, 67, 54, 0.1)',
+          fill: true,
+          yAxisID: 'y2'
+        }
+      ]
+    });
+  } catch (error) {
+    logger.error(`Error fetching history for ${req.params.address}:`, error);
+    res.status(500).json({ error: 'Error fetching historical data', message: error.message });
+  }
+});
+
+// Risk assessment endpoint
+app.post('/api/risk-assessment', validateRequest(['address']), async (req, res) => {
   try {
     const { address, onChainData } = req.body;
     
-    // Fetch additional on-chain data if not provided
-    let features = onChainData;
-    if (!features) {
-      try {
-        // Call the blockchain data collector service
-        const response = await axios.get(`${AI_MODEL_API}/blockchain-data/${address}`);
-        features = response.data.features;
-      } catch (dataError) {
-        console.error('Error fetching blockchain data:', dataError);
-        // Use mock data as fallback
-        features = {
-          transaction_count: Math.floor(Math.random() * 100),
-          avg_transaction_value: Math.random() * 1000,
-          wallet_age_days: Math.floor(Math.random() * 365) + 1,
-          previous_loans_count: Math.floor(Math.random() * 10),
-          repayment_ratio: 0.8 + Math.random() * 0.2, // 0.8 to 1.0
-          default_count: Math.floor(Math.random() * 2),
-          collateral_diversity: Math.floor(Math.random() * 3) + 1,
-          cross_chain_activity: Math.floor(Math.random() * 5),
-          lending_protocol_interactions: Math.floor(Math.random() * 20),
-          wallet_balance_volatility: Math.random() * 5
-        };
-      }
-    }
-
-    // Try to call the AI model API
-    let aiResponse;
-    try {
-      aiResponse = await axios.post(`${AI_MODEL_API}/predict`, {
-        address,
-        features
-      });
-    } catch (aiError) {
-      console.error('Error calling AI model API:', aiError);
-      // Use mock data if AI model is not available
-      aiResponse = {
-        data: {
-          risk_score: Math.floor(Math.random() * 100),
-          risk_category: "Medium Risk",
-          explanation: {
-            recommendations: [
-              {
-                title: "Diversify Your Collateral",
-                description: "Adding different asset types as collateral can reduce your risk score.",
-                impact: "high"
-              },
-              {
-                title: "Improve Repayment Frequency",
-                description: "Regular repayments can improve your risk profile.",
-                impact: "medium"
-              }
-            ],
-            top_factors: [
-              { Feature: "repayment_ratio", Importance: 0.35 },
-              { Feature: "default_count", Importance: 0.25 },
-              { Feature: "collateral_diversity", Importance: 0.15 }
-            ]
-          }
-        }
-      };
+    // Validate Ethereum address
+    if (!ethers.utils.isAddress(address)) {
+      return res.status(400).json({ error: 'Invalid Ethereum address' });
     }
     
-    const riskScore = Math.floor(aiResponse.data.risk_score);
+    // Use provided on-chain data or fetch it
+    const userData = onChainData || await aiIntegration.fetchUserData(address, false);
     
-    // Update the risk score on the contract
-    const tx = await lendingPoolContract.updateRiskScore(address, riskScore);
-    await tx.wait();
+    // Generate risk assessment
+    const riskAssessment = await aiIntegration.assessRisk(address, {
+      updateOnChain: false, // Don't update on-chain from API request
+      useCachedData: true,
+      generateZkProof: false
+    });
     
-    // Get recommendations from AI model
-    const recommendations = aiResponse.data.explanation.recommendations;
-    
+    // Return risk assessment with recommendations
     res.json({
       address,
-      riskScore,
-      riskCategory: aiResponse.data.risk_category,
-      updated: true,
-      txHash: tx.hash,
-      recommendations,
-      topFactors: aiResponse.data.explanation.top_factors,
-      timestamp: new Date().toISOString()
+      riskScore: riskAssessment.riskScore,
+      confidence: riskAssessment.confidence || 0.85,
+      recommendations: riskAssessment.recommendations || [],
+      topFactors: riskAssessment.factors || [],
+      analysisTimestamp: Date.now()
     });
   } catch (error) {
-    console.error('Error updating risk score:', error);
-    res.status(500).json({ error: 'Failed to update risk score' });
+    logger.error(`Error assessing risk for ${req.body.address}:`, error);
+    res.status(500).json({ error: 'Error processing risk assessment', message: error.message });
   }
 });
 
-/**
- * Get AI recommendations for a user
- */
-app.get('/api/recommendations/:address', async (req, res) => {
+// Get AI recommendations
+app.get('/api/recommendations/:address', cacheMiddleware(1800), async (req, res) => {
   try {
     const { address } = req.params;
     
-    try {
-      // Call the AI model API for recommendations
-      const aiResponse = await axios.post(`${AI_MODEL_API}/predict`, {
-        address,
-        features: null // Let the API fetch the features
-      });
-      
-      res.json(aiResponse.data.explanation.recommendations);
-    } catch (aiError) {
-      console.error('Error calling AI API:', aiError);
-      // Fallback to mock recommendations
-      const recommendations = [
-        {
-          id: 1,
-          title: 'Diversify Your Collateral',
-          description: 'Adding different asset types as collateral can reduce your risk score by up to 10 points.',
-          impact: 'high',
-        },
-        {
-          id: 2,
-          title: 'Increase Repayment Frequency',
-          description: 'More frequent smaller repayments can improve your repayment pattern score.',
-          impact: 'medium',
-        },
-        {
-          id: 3,
-          title: 'Add More Collateral',
-          description: 'Your current collateralization ratio is lower than recommended.',
-          impact: 'high',
-        },
-      ];
-      
-      res.json(recommendations);
-    }
-  } catch (error) {
-    console.error('Error generating recommendations:', error);
-    res.status(500).json({ error: 'Failed to generate recommendations' });
-  }
-});
-
-/**
- * Get historical data for a user
- */
-app.get('/api/history/:address', async (req, res) => {
-  try {
-    const { address } = req.params;
-    
-    // Check if we have historical data in mocks
-    if (USE_MOCKS) {
-      try {
-        const mockDbPath = path.join(__dirname, 'mocks', 'db.json');
-        const mockDb = JSON.parse(fs.readFileSync(mockDbPath, 'utf8'));
-        
-        res.json(mockDb.history);
-        return;
-      } catch (mockError) {
-        console.error('Error reading mock database:', mockError);
-      }
+    // Validate Ethereum address
+    if (!ethers.utils.isAddress(address)) {
+      return res.status(400).json({ error: 'Invalid Ethereum address' });
     }
     
-    // Fallback mock data
-    const historicalData = {
-      labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-      datasets: [
-        {
-          label: 'Risk Score',
-          data: [65, 59, 80, 81, 56, 55],
-        },
-        {
-          label: 'Interest Rate',
-          data: [8, 7, 9, 10, 7, 6],
-        }
-      ],
-    };
+    // Get recommendations from AI
+    const recommendations = await aiIntegration.getRecommendations(address);
     
-    res.json(historicalData);
+    res.json(recommendations);
   } catch (error) {
-    console.error('Error fetching historical data:', error);
-    res.status(500).json({ error: 'Failed to fetch historical data' });
+    logger.error(`Error getting recommendations for ${req.params.address}:`, error);
+    res.status(500).json({ error: 'Error fetching recommendations', message: error.message });
   }
 });
 
-/**
- * Send a message to Layer 1 (Move) via the bridge
- */
-app.post('/api/bridge/send-message', async (req, res) => {
-  try {
-    const { targetAddress, messageType, payload, gasLimit } = req.body;
-    
-    // Convert address to bytes32
-    const targetAddressBytes = ethers.utils.hexZeroPad(targetAddress, 32);
-    
-    // Send message via the bridge
-    const tx = await bridgeContract.sendMessageToL1(
-      targetAddressBytes,
-      messageType,
-      payload || '0x',
-      gasLimit || 2000000,
-      { value: ethers.utils.parseEther('0.01') } // Fee for the bridge
-    );
-    
-    await tx.wait();
-    
-    res.json({
-      success: true,
-      txHash: tx.hash,
-      messageType,
-      targetAddress
-    });
-  } catch (error) {
-    console.error('Error sending message to Layer 1:', error);
-    res.status(500).json({ error: 'Failed to send message' });
-  }
-});
-
-/**
- * Get pending messages for an address
- */
+// Bridge messages endpoint
 app.get('/api/bridge/messages/:address', async (req, res) => {
   try {
     const { address } = req.params;
     
-    // Get messages from the bridge
-    const messageIds = await bridgeContract.getMessageIdsBySender(address);
+    // Validate Ethereum address
+    if (!ethers.utils.isAddress(address)) {
+      return res.status(400).json({ error: 'Invalid Ethereum address' });
+    }
     
-    // Get details for each message
-    const messages = await Promise.all(
-      messageIds.map(async (id) => {
-        const message = await bridgeContract.messages(id);
-        return {
-          id: id,
-          sender: message.sender,
-          targetAddress: ethers.utils.hexStripZeros(message.targetAddress),
-          status: ['Pending', 'Processed', 'Failed', 'Canceled'][message.status],
-          messageType: message.messageType,
-          timestamp: new Date(message.timestamp.toNumber() * 1000).toISOString()
-        };
-      })
-    );
+    // In a production environment, this would fetch real bridge messages
+    // For demo purposes, generate some simulated messages
+    
+    const messageTypes = ['RISK_SCORE_UPDATE', 'COLLATERAL_CHANGE', 'CROSS_CHAIN_TRANSFER', 'IDENTITY_VERIFICATION'];
+    const statuses = ['Pending', 'Processed', 'Failed'];
+    
+    const messages = [];
+    const count = 3 + Math.floor(Math.random() * 5);
+    
+    for (let i = 0; i < count; i++) {
+      const messageType = messageTypes[Math.floor(Math.random() * messageTypes.length)];
+      const status = statuses[Math.floor(Math.random() * statuses.length)];
+      const timestamp = Date.now() - Math.floor(Math.random() * 7 * 86400 * 1000); // Up to 7 days ago
+      
+      messages.push({
+        messageId: `0x${Math.random().toString(16).slice(2, 10)}`,
+        messageType,
+        status,
+        timestamp,
+        sender: address,
+        targetAddress: `0x${Math.random().toString(16).slice(2, 42)}`,
+        direction: Math.random() > 0.5 ? 'L2ToL1' : 'L1ToL2'
+      });
+    }
+    
+    // Sort by timestamp, newest first
+    messages.sort((a, b) => b.timestamp - a.timestamp);
+    
+    res.json({ messages, count: messages.length });
+  } catch (error) {
+    logger.error(`Error fetching bridge messages for ${req.params.address}:`, error);
+    res.status(500).json({ error: 'Error fetching bridge messages', message: error.message });
+  }
+});
+
+// Admin routes (protected)
+app.post('/api/admin/update-risk-score', authenticate, validateRequest(['address', 'score']), async (req, res) => {
+  try {
+    const { address, score } = req.body;
+    
+    // Validate Ethereum address and score
+    if (!ethers.utils.isAddress(address)) {
+      return res.status(400).json({ error: 'Invalid Ethereum address' });
+    }
+    
+    if (isNaN(score) || score < 0 || score > 100) {
+      return res.status(400).json({ error: 'Score must be between 0 and 100' });
+    }
+    
+    // Update risk score on-chain
+    const receipt = await aiIntegration.updateRiskScore(address, score);
     
     res.json({
+      success: true,
       address,
-      messages,
-      count: messages.length
+      newScore: score,
+      transactionHash: receipt.transactionHash
     });
   } catch (error) {
-    console.error('Error fetching bridge messages:', error);
-    res.status(500).json({ error: 'Failed to fetch messages' });
+    logger.error(`Error updating risk score for ${req.body.address}:`, error);
+    res.status(500).json({ error: 'Error updating risk score', message: error.message });
   }
 });
 
-/**
- * Deposit funds into the lending pool
- */
-app.post('/api/deposit', async (req, res) => {
-  try {
-    const { address, amount } = req.body;
-    
-    // Execute deposit transaction
-    const tx = await lendingPoolContract.deposit(
-      ethers.utils.parseEther(amount),
-      { from: address }
-    );
-    
-    await tx.wait();
-    
-    res.json({
-      success: true,
-      txHash: tx.hash,
-      amount,
-      address
-    });
-  } catch (error) {
-    console.error('Error processing deposit:', error);
-    res.status(500).json({ error: 'Failed to process deposit' });
-  }
+// Error handling middleware
+app.use((err, req, res, next) => {
+  logger.error('Unhandled error:', err);
+  res.status(500).json({ error: 'Internal server error', message: err.message });
 });
 
-/**
- * Borrow funds from the lending pool
- */
-app.post('/api/borrow', async (req, res) => {
-  try {
-    const { address, amount } = req.body;
-    
-    // Execute borrow transaction
-    const tx = await lendingPoolContract.borrow(
-      ethers.utils.parseEther(amount),
-      { from: address }
-    );
-    
-    await tx.wait();
-    
-    res.json({
-      success: true,
-      txHash: tx.hash,
-      amount,
-      address
-    });
-  } catch (error) {
-    console.error('Error processing borrow:', error);
-    res.status(500).json({ error: 'Failed to process borrow' });
-  }
+// Start server
+app.listen(PORT, () => {
+  logger.info(`IntelliLend API server running on port ${PORT}`);
+  logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  logger.info(`Using ${aiConfig.useLocalModel ? 'local' : 'remote'} AI model`);
 });
 
-// Start the server
-app.listen(port, () => {
-  console.log(`IntelliLend API server running on port ${port}`);
-});
-
-module.exports = app;
+module.exports = app; // Export for testing

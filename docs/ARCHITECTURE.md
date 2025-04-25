@@ -1,145 +1,330 @@
-# IntelliLend Architecture
+# IntelliLend: Technical Architecture
 
-IntelliLend is an AI-powered DeFi lending platform built on IOTA's unique dual-layer architecture. This document outlines the architecture, components, and integrations of the IntelliLend protocol.
+## Overview
+
+IntelliLend is a revolutionary decentralized lending protocol built on IOTA's dual-layer architecture, combining advanced artificial intelligence with blockchain technology to create a more secure, efficient, and personalized lending experience.
+
+This document outlines the technical architecture of the IntelliLend platform, focusing on how various components interact to enable intelligent risk assessment, privacy-preserving identity verification, and cross-chain liquidity optimization.
 
 ## System Architecture
 
-IntelliLend leverages IOTA's dual-layer architecture to create a secure, efficient, and intelligent lending protocol:
+IntelliLend leverages IOTA's unique dual-layer architecture:
 
-1. **Layer 1 (Move)**: Secure asset representation and identity
-2. **Layer 2 (EVM)**: Lending operations and user interactions
-3. **Cross-Layer Bridge**: Communication between Layer 1 and Layer 2
-4. **AI Risk Assessment**: Machine learning for borrower risk evaluation
-5. **Frontend**: User interface for borrowers and lenders
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     IOTA Dual-Layer Architecture                 │
+├─────────────────────────┬───────────────────────────────────────┤
+│                         │                                       │
+│     Layer 1 (Move)      │            Layer 2 (EVM)              │
+│  Object-Centric Model   │       Smart Contract Platform         │
+│                         │                                       │
+├─────────────────────────┼───────────────────────────────────────┤
+│                         │                                       │
+│  • Enhanced Assets      │  • Lending Pool                       │
+│  • Identity Framework   │  • Zero-Knowledge Verification        │
+│  • Secure Objects       │  • Cross-Chain Liquidity              │
+│  • Privacy Primitives   │  • AI Risk Assessment Integration     │
+│                         │  • Strategy Controller                │
+└─────────────────────────┴───────────────────────────────────────┘
+```
 
-![Architecture Diagram](./images/architecture.png)
+### Layer 1: IOTA Mainnet (Move)
 
-## Layer 1 (Move) Components
+Layer 1 uses the Move programming language with an object-centric model for enhanced security and parallelism:
 
-The first layer of IntelliLend uses Move programming language on IOTA's Layer 1 for secure asset representation:
+1. **Enhanced Asset Representation**:
+   - Move objects with fine-grained capabilities and permissions
+   - Secure ownership model with cryptographic guarantees
+   - Non-fungible representation of lending positions
 
-### Asset Module
+2. **Identity Framework Integration**:
+   - Self-sovereign identity implementation
+   - Verifiable credentials with selective disclosure
+   - Zero-knowledge proof verification
 
-The `asset.move` module handles secure asset representation with the following features:
+3. **Cross-Layer Communication**:
+   - Secure messaging between Layer 1 and Layer 2
+   - Atomic state updates across layers
+   - Event-driven architecture for state synchronization
 
-- Object-centric model for assets
-- Risk score storage and management
-- Cross-layer message processing
-- Asset registry for tracking all platform assets
+### Layer 2: IOTA EVM (Solidity)
 
-Key structures:
-- `LendingAsset`: Represents a lending asset with risk score
-- `CrossLayerMessage`: Handles messages from Layer 2
-- `AssetRegistry`: Tracks all assets in the system
+Layer 2 uses the Ethereum Virtual Machine (EVM) compatibility layer for smart contract functionality:
 
-## Layer 2 (EVM) Components
+1. **LendingPool Contract**:
+   - Core lending operations (deposit, borrow, repay, withdraw)
+   - Collateral management and liquidation mechanism
+   - AI-driven risk assessment integration
+   - Dynamic interest rate model
 
-The second layer uses IOTA EVM with Solidity smart contracts:
+2. **ZKVerifier Contract**:
+   - Privacy-preserving identity verification
+   - Zero-knowledge proof verification for credit scoring
+   - Multiple verification schemes (Groth16, Plonk, STARK)
+   - Identity service integration
 
-### LendingPool Contract
+3. **CrossChainLiquidity Contract**:
+   - Multi-chain liquidity aggregation
+   - Capital optimization across networks
+   - AI-optimized yield strategies
+   - Secure cross-chain asset transfer
 
-The main contract for lending operations:
+4. **StrategyController Contract**:
+   - Yield strategy management
+   - Automated capital allocation
+   - Risk-adjusted return optimization
+   - Market condition monitoring
 
-- Deposit and borrow functionality
-- Collateral management
-- Liquidation mechanism
-- Dynamic interest rate model based on risk scores
-- Integration with the AI risk assessment system
+### Cross-Layer Bridge
 
-### CrossLayerBridge Contract
+The cross-layer bridge enables secure communication between Layer 1 and Layer 2:
 
-Handles communication between Layer 2 and Layer 1:
+1. **ZKCrossLayerBridge**:
+   - Privacy-preserving message passing
+   - Zero-knowledge proof verification for secure bridging
+   - Message authentication and replay protection
+   - Fault tolerance and error handling
 
-- Message passing between EVM and Move
-- Security and fee management
-- Message tracking and status updates
+2. **Bridge Security**:
+   - Multi-signature authorization
+   - Oracle-based verification
+   - Timelock mechanisms for critical operations
+   - Automated monitoring and recovery
 
-## Cross-Layer Integration
+## AI Integration Architecture
 
-The cross-layer communication is a key innovation in IntelliLend, allowing for:
+IntelliLend incorporates advanced AI models for risk assessment, interest rate optimization, and yield maximization:
 
-1. **Enhanced Security**: Critical asset data is secured on Layer 1 using Move's object-centric model
-2. **Operational Efficiency**: Lending operations and user interactions happen on the EVM-compatible Layer 2
-3. **Data Integrity**: Message passing ensures consistency across layers
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    AI Integration Architecture                   │
+├─────────────────┬─────────────────────────┬────────────────────┤
+│                 │                         │                    │
+│  Data Pipeline  │     Model Pipeline      │  Integration API   │
+│                 │                         │                    │
+├─────────────────┼─────────────────────────┼────────────────────┤
+│• On-chain Data  │• Risk Assessment Model  │• Smart Contract    │
+│• Transaction    │• Default Prediction     │  Interface         │
+│  History        │• Interest Rate          │• Oracle Interface  │
+│• Wallet Analysis│  Optimization           │• Front-end API     │
+│• Cross-chain    │• Collateral Quality     │• Cross-layer       │
+│  Activity       │  Analysis               │  Interface         │
+│• Market Data    │• Yield Strategy         │                    │
+│                 │  Optimization           │                    │
+└─────────────────┴─────────────────────────┴────────────────────┘
+```
 
-Message Types:
-- `RISK_SCORE_UPDATE`: Updates risk scores based on AI assessment
-- `COLLATERAL_CHANGE`: Notifies Layer 1 of collateral status changes
-- `LIQUIDATION`: Handles liquidation events across layers
+### Data Collection and Processing
 
-## AI Risk Assessment System
+1. **On-chain Data Collection**:
+   - Transaction history and patterns
+   - Wallet interactions and balance history
+   - Lending protocol engagement
+   - Cross-chain activity tracking
 
-IntelliLend uses machine learning to assess borrower risk based on on-chain activity:
+2. **Feature Engineering**:
+   - Advanced temporal features
+   - Network analysis metrics
+   - Behavioral patterns extraction
+   - Risk indicators computation
 
-### Risk Model
+### AI Models
 
-The risk assessment model:
-- Analyzes transaction patterns and wallet history
-- Evaluates repayment behavior and collateral management
-- Provides personalized risk scores (0-100)
-- Generates dynamic interest rates based on risk
+1. **Risk Assessment Model**:
+   - Ensemble approach (Random Forest, Gradient Boosting, Neural Networks)
+   - User-specific risk scoring
+   - Confidence interval estimation
+   - Feature importance analysis
 
-### AI API Service
+2. **Default Prediction Model**:
+   - Time series forecasting (ARIMA, Prophet)
+   - Early warning systems
+   - Behavioral change detection
+   - Market correlation analysis
 
-Exposes the risk model through an API:
-- `/predict`: Predicts risk score for a user
-- `/batch-predict`: Processes multiple users
-- `/importance`: Returns feature importance
+3. **Interest Rate Optimization**:
+   - Reinforcement learning for dynamic rate setting
+   - Multi-objective optimization (platform revenue, user retention)
+   - Market condition adaptation
+   - Personalized rate calculation
 
-### Blockchain Data Collection
+4. **Yield Strategy Optimization**:
+   - Portfolio optimization algorithms
+   - Risk-adjusted return maximization
+   - Market opportunity identification
+   - Automated strategy execution
 
-Fetches on-chain data for the AI model:
-- Transaction history and patterns
-- Wallet activity and age
-- DeFi interaction history
-- Cross-chain activity
+### Privacy-Preserving Architecture
 
-## Frontend Application
+1. **Zero-Knowledge Proofs**:
+   - Identity verification without data exposure
+   - Credit assessment with privacy preservation
+   - Cross-chain reputation without information leakage
+   - On-chain verification of off-chain computations
 
-The React-based frontend provides:
+2. **Secure Multi-Party Computation**:
+   - Distributed AI model training
+   - Secure feature aggregation
+   - Privacy-preserving analytics
+   - Confidential transaction analysis
 
-- User dashboard with position overview
-- Risk visualization and explanations
-- AI-generated recommendations
-- Market statistics and trends
-- Cross-layer bridge visualization
+## Backend Architecture
 
-## Setup and Deployment
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Backend Architecture                         │
+├─────────────────┬─────────────────────────┬────────────────────┤
+│                 │                         │                    │
+│   API Server    │      AI Integration     │   Blockchain       │
+│                 │                         │   Interface        │
+├─────────────────┼─────────────────────────┼────────────────────┤
+│• REST API       │• Model Serving          │• IOTA L1           │
+│• Authentication │• Feature Processing     │  Interface         │
+│• Caching        │• Risk Assessment        │• IOTA EVM          │
+│• Rate Limiting  │• Recommendations        │  Interface         │
+│• Logging        │• ZK-Proof Generation    │• Cross-chain       │
+│• Validation     │• Model Monitoring       │  Integration       │
+└─────────────────┴─────────────────────────┴────────────────────┘
+```
 
-### Environment Setup
+### API Server
 
-1. IOTA node connection
-2. Environment variables configuration
-3. Smart contract deployment (EVM)
-4. Move module deployment (Layer 1)
-5. AI model training and deployment
-6. Frontend deployment
+- Express.js based REST API for client communication
+- JWT authentication for secure access
+- Request validation and sanitization
+- Response caching for performance optimization
+- Rate limiting for DoS protection
+- Comprehensive logging and monitoring
 
-### Cross-Layer Bridge Setup
+### AI Integration Service
 
-To enable cross-layer communication:
+- Model serving infrastructure for prediction endpoints
+- Feature processing and transformation pipeline
+- Risk score calculation and recommendation generation
+- Zero-knowledge proof generation for privacy
+- Model performance monitoring and retraining triggers
 
-1. Deploy the `CrossLayerBridge.sol` contract on IOTA EVM
-2. Configure the bridge in the `LendingPool.sol` contract
-3. Configure Move modules to receive messages from Layer 2
-4. Run test scripts to validate communication
+### Blockchain Interface
 
-## Security Considerations
+- IOTA Layer 1 integration via Move SDK
+- IOTA EVM integration via ethers.js
+- Transaction submission and monitoring
+- Event listening and handling
+- Cross-chain communication coordination
 
-1. **Dual-Layer Security**: Critical assets are secured on Layer 1
-2. **AI Risk Assessment**: Reduces systemic risk through intelligent scoring
-3. **Bridge Security**: Message authentication and replay protection
-4. **Privacy Considerations**: Zero-knowledge proofs for sharing necessary data
+## Frontend Architecture
 
-## Future Development
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Frontend Architecture                        │
+├─────────────────┬─────────────────────────┬────────────────────┤
+│                 │                         │                    │
+│   React App     │    Data Visualization   │   Wallet           │
+│                 │                         │   Integration      │
+├─────────────────┼─────────────────────────┼────────────────────┤
+│• User Dashboard │• Risk Visualization     │• MetaMask          │
+│• Lending UI     │• Historical Charts      │• Firefly           │
+│• Identity       │• Portfolio Analytics    │• WalletConnect     │
+│  Verification   │• AI Insights            │• Cross-chain       │
+│• Settings       │• Recommendation         │  Wallets           │
+│                 │  Displays               │                    │
+└─────────────────┴─────────────────────────┴────────────────────┘
+```
 
-1. **Enhanced AI Models**: More sophisticated ML techniques
-2. **Cross-Chain Integration**: Expanded liquidity sources
-3. **Zero-Knowledge Proofs**: Advanced privacy features
-4. **DAO Governance**: Community management of risk parameters
+### User Interface Components
 
-## Resources
+- Responsive dashboard for lending operations
+- Risk assessment visualization
+- Cross-chain liquidity management
+- Identity verification interface
+- Strategy selection and management
+- Transaction history and analytics
 
-- [IOTA Documentation](https://docs.iota.org/)
-- [IOTA EVM](https://evm.iota.org/)
-- [Move Documentation](https://move-book.com/)
+### Data Visualization
+
+- Interactive charts for historical data
+- Risk assessment visualization
+- Portfolio composition analytics
+- Yield strategy performance tracking
+- Market condition monitoring
+
+### Wallet Integration
+
+- Multiple wallet support (MetaMask, Firefly, etc.)
+- Secure transaction signing
+- Cross-chain wallet management
+- Balance monitoring across networks
+
+## Security Architecture
+
+Security is a fundamental aspect of IntelliLend, with multiple layers of protection:
+
+1. **Smart Contract Security**:
+   - Formal verification of critical contracts
+   - Comprehensive test coverage
+   - Professional security audits
+   - Secure coding practices
+
+2. **Privacy Protection**:
+   - Zero-knowledge proofs for sensitive data
+   - Minimal on-chain data storage
+   - Decentralized identity management
+   - Data minimization principles
+
+3. **Operational Security**:
+   - Multi-signature control for critical operations
+   - Timelocks and circuit breakers
+   - Rate limiting and abnormal behavior detection
+   - Secure key management
+
+4. **AI Security**:
+   - Model security assessment
+   - Adversarial testing
+   - Fairness and bias mitigation
+   - Privacy-preserving machine learning
+
+## Deployment Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Deployment Architecture                       │
+├─────────────────┬─────────────────────────┬────────────────────┤
+│                 │                         │                    │
+│  IOTA Network   │   Hosting & Compute     │   Data Storage     │
+│                 │                         │                    │
+├─────────────────┼─────────────────────────┼────────────────────┤
+│• IOTA Mainnet   │• Backend API Servers    │• Distributed       │
+│• IOTA EVM       │• AI Model Servers       │  Storage           │
+│• Testnet        │• Containerized          │• Database          │
+│                 │  Deployment             │• Cache Layers      │
+│                 │• Load Balancing         │• Smart Contract    │
+│                 │                         │  Storage           │
+└─────────────────┴─────────────────────────┴────────────────────┘
+```
+
+### IOTA Network Deployment
+
+- Smart contracts deployed on IOTA EVM
+- Move modules deployed on IOTA Layer 1
+- Cross-layer bridge deployment for communication
+- Testnet deployment for development and testing
+
+### Infrastructure Deployment
+
+- Containerized microservices architecture
+- Kubernetes orchestration for scaling
+- Load balancing and high availability
+- Continuous integration and deployment
+
+### Data Storage and Management
+
+- Distributed storage for off-chain data
+- Database for user preferences and settings
+- Smart contract storage for on-chain data
+- Caching layers for performance optimization
+
+## Conclusion
+
+IntelliLend's architecture seamlessly integrates AI capabilities with IOTA's dual-layer blockchain to create a secure, efficient, and personalized lending experience. By combining the security of Move on Layer 1 with the flexibility of EVM on Layer 2, and enhancing both with advanced AI models, IntelliLend represents a new paradigm in decentralized finance.
+
+The architecture is designed with modularity, scalability, and security as core principles, allowing for future expansion and adaptation to evolving market needs and technological advancements.
