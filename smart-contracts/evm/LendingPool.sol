@@ -5,6 +5,8 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "./interfaces/IIOTAStreams.sol";
+import "./interfaces/IIOTAIdentity.sol";
 
 /**
  * @title IntelliLend Lending Pool
@@ -15,6 +17,8 @@ contract LendingPool is ReentrancyGuard, Ownable {
 
     // Interfaces to the cross-layer bridge (for Move integration)
     ICrossLayerBridge public bridge;
+    IIOTAStreams public iotaStreams;
+    IIOTAIdentity public iotaIdentity;
 
     // State variables
     address public admin;
@@ -23,6 +27,11 @@ contract LendingPool is ReentrancyGuard, Ownable {
     mapping(address => uint256) public collaterals;
     mapping(address => uint256) public riskScores; // Populated by the AI system
     mapping(address => uint256) public lastInterestUpdate;
+    
+    // IOTA Identity and Streams specific data
+    mapping(address => bytes) public userDIDs; // Maps user addresses to their IOTA DID
+    bytes public streamsChannelAddress; // IOTA Streams channel for cross-layer communication
+    bytes32 public streamsSubscriptionId; // Subscription ID for receiving updates from IOTA Streams
     
     // Protocol settings
     uint256 public collateralFactor = 75; // 75% (multiplied by 100)
@@ -61,16 +70,29 @@ contract LendingPool is ReentrancyGuard, Ownable {
      * @param _lendingToken Address of the token used for lending (e.g., IOTA)
      * @param _collateralToken Address of the token used for collateral (e.g., MIOTA)
      * @param _bridgeAddress Address of the cross-layer bridge contract
+     * @param _iotaStreamsAddress Address of the IOTA Streams contract
+     * @param _iotaIdentityAddress Address of the IOTA Identity contract
      */
     constructor(
         address _lendingToken,
         address _collateralToken,
-        address _bridgeAddress
+        address _bridgeAddress,
+        address _iotaStreamsAddress,
+        address _iotaIdentityAddress
     ) {
         admin = msg.sender;
         lendingToken = IERC20(_lendingToken);
         collateralToken = IERC20(_collateralToken);
         bridge = ICrossLayerBridge(_bridgeAddress);
+        iotaStreams = IIOTAStreams(_iotaStreamsAddress);
+        iotaIdentity = IIOTAIdentity(_iotaIdentityAddress);
+        
+        // Initialize IOTA Streams channel for cross-layer communication
+        bytes memory seed = abi.encodePacked(blockhash(block.number - 1), address(this));
+        streamsChannelAddress = iotaStreams.createChannel(seed);
+        
+        // Subscribe to the channel to receive updates
+        streamsSubscriptionId = iotaStreams.subscribe(streamsChannelAddress, address(this));
     }
     
     // Modifier to restrict access to admin
@@ -92,6 +114,76 @@ contract LendingPool is ReentrancyGuard, Ownable {
         // Send risk score update to Move layer
         _sendRiskScoreToMoveLayer(user, score);
     }
+    
+    /**
+     * @dev Associate a user with their IOTA DID for identity verification
+     * @param user Address of the user
+     * @param did IOTA DID of the user
+     */
+    function associateUserWithDID(address user, bytes calldata did) external onlyAdmin {
+        // Verify the DID is valid by resolving it
+        try iotaIdentity.resolveDID(did) returns (IIOTAIdentity.DIDDocument memory document) {
+            // Store the association
+            userDIDs[user] = did;
+            emit UserDIDAssociated(user, did);
+            
+            // If the user exists, update their risk score based on identity
+            if (riskScores[user] > 0) {
+                // Verified identity reduces risk score (improves creditworthiness)
+                uint256 newScore = riskScores[user] > 10 ? riskScores[user] - 10 : 0;
+                riskScores[user] = newScore;
+                emit RiskScoreUpdated(user, newScore);
+                
+                // Propagate to Move layer
+                _sendRiskScoreToMoveLayer(user, newScore);
+            }
+        } catch {
+            revert("Invalid DID");
+        }
+    }
+    
+    /**
+     * @dev Verify a user's identity using their IOTA Identity DID
+     * @param user Address of the user
+     * @param message Message signed by the user
+     * @param signature Signature of the message
+     * @return Whether the verification was successful
+     */
+    function verifyUserIdentity(
+        address user,
+        bytes calldata message,
+        bytes calldata signature
+    ) external returns (bool) {
+        // Ensure the user has an associated DID
+        require(userDIDs[user].length > 0, "User has no associated DID");
+        
+        // Verify the signature using IOTA Identity
+        IIOTAIdentity.VerificationResult memory result = iotaIdentity.verifySignature(
+            userDIDs[user],
+            message,
+            signature
+        );
+        
+        // If verification was successful, update the user's risk score
+        if (result.isValid) {
+            // Successful verification reduces risk score (improves creditworthiness)
+            uint256 newScore = riskScores[user] > 15 ? riskScores[user] - 15 : 0;
+            riskScores[user] = newScore;
+            emit RiskScoreUpdated(user, newScore);
+            emit IdentityVerified(user, result.timestamp);
+            
+            // Propagate to Move layer
+            _sendRiskScoreToMoveLayer(user, newScore);
+            
+            return true;
+        }
+        
+        return false;
+    }
+    
+    // Event for tracking DID associations
+    event UserDIDAssociated(address indexed user, bytes did);
+    event IdentityVerified(address indexed user, uint256 timestamp);
 
     /**
      * @dev Calculates interest rate based on user's risk score
@@ -501,7 +593,7 @@ contract LendingPool is ReentrancyGuard, Ownable {
     }
     
     /**
-     * @dev Send risk score update to Move layer through cross-layer bridge
+     * @dev Send risk score update to Move layer through both cross-layer bridge and IOTA Streams
      * @param user Address of the user
      * @param score The risk score
      */
@@ -516,11 +608,41 @@ contract LendingPool is ReentrancyGuard, Ownable {
             payload,
             2000000 // gas limit
         ) returns (bytes32 messageId) {
-            // Message sent successfully
-        } catch {
-            // Handle error (in production, we'd have more robust error handling)
+            // Message sent successfully via bridge
+            emit MessageSent(messageId, user, "RISK_SCORE_UPDATE", block.timestamp);
+            
+            // Also send via IOTA Streams for redundancy and security
+            try iotaStreams.sendMessage(
+                streamsChannelAddress,
+                payload,
+                "RISK_SCORE_UPDATE"
+            ) returns (bytes memory streamMessageId) {
+                emit StreamsMessageSent(user, streamMessageId, block.timestamp);
+            } catch (bytes memory reason) {
+                emit StreamsMessageFailed(user, reason, block.timestamp);
+            }
+        } catch (bytes memory reason) {
+            // Handle error with more robust error handling
+            emit MessageFailed(user, reason, block.timestamp);
+            
+            // Try to send via IOTA Streams as fallback
+            try iotaStreams.sendMessage(
+                streamsChannelAddress,
+                payload,
+                "RISK_SCORE_UPDATE"
+            ) returns (bytes memory streamMessageId) {
+                emit StreamsMessageSent(user, streamMessageId, block.timestamp);
+            } catch {
+                emit StreamsMessageFailed(user, bytes("Both bridge and Streams failed"), block.timestamp);
+            }
         }
     }
+    
+    // Events for tracking message sending
+    event MessageSent(bytes32 indexed messageId, address indexed user, string messageType, uint256 timestamp);
+    event MessageFailed(address indexed user, bytes reason, uint256 timestamp);
+    event StreamsMessageSent(address indexed user, bytes messageId, uint256 timestamp);
+    event StreamsMessageFailed(address indexed user, bytes reason, uint256 timestamp);
     
     /**
      * @dev Send collateral update to Move layer through cross-layer bridge

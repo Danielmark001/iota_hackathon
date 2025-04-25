@@ -15,8 +15,30 @@ const config = require('./config');
 const logger = require('./utils/logger');
 const { errorMiddleware } = require('./middleware/errorMiddleware');
 
+// Import services for initialization
+const iotaBlockchainService = require('./services/iotaBlockchainService');
+const iotaIdentityService = require('./services/iotaIdentityService');
+const iotaStreamsService = require('./services/iotaStreamsService');
+
 // Import routes
 const apiRoutes = require('./routes');
+
+// Initialize IOTA services
+(async () => {
+  try {
+    logger.info('Initializing IOTA services...');
+    
+    // Initialize services in sequence
+    await iotaBlockchainService.initialize();
+    logger.info('IOTA Blockchain Service initialized');
+    
+    // Other services will be initialized as dependencies
+    logger.info('All IOTA services initialized');
+  } catch (error) {
+    logger.error(`Error initializing IOTA services: ${error.message}`);
+    logger.warn('Some IOTA functionality may be limited');
+  }
+})();
 
 // Initialize the app
 const app = express();

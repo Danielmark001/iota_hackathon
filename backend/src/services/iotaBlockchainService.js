@@ -822,6 +822,96 @@ class IOTABlockchainService {
   }
 
   /**
+   * Query the IOTA Tangle with custom search parameters
+   * @param {Object} query - Query parameters
+   * @param {string} network - Network name: 'iota', 'shimmer', or 'testnet'
+   * @returns {Promise<Object[]>} - Query results
+   */
+  async queryTangle(query, network = 'iota') {
+    try {
+      // Get client for this network
+      const client = this.clients[network];
+      
+      if (!client) {
+        throw new Error(`No client available for network: ${network}`);
+      }
+      
+      logger.info(`Querying ${network} Tangle with criteria: ${JSON.stringify(query)}`);
+      
+      // Determine appropriate search method based on query
+      const results = [];
+      
+      // Handle different query types
+      if (query.type) {
+        // If searching by type, convert to tag and search
+        const tag = Buffer.from(query.type).toString('hex');
+        
+        // Set limit
+        const limit = query.limit || 50;
+        
+        // Search by tag
+        const messages = await client.searchTaggedData(tag, limit);
+        
+        // Process each message
+        for (const messageId of messages) {
+          try {
+            // Get message data
+            const messageData = await this.getTangleMessage(network, messageId);
+            
+            // Basic filter by timestamp
+            if (query.timestamp && query.timestamp.$lt && 
+                messageData.timestamp && new Date(messageData.timestamp).getTime() >= query.timestamp.$lt) {
+              continue;
+            }
+            
+            // Simple filter implementation for common fields
+            let includeMessage = true;
+            
+            // Check fields in data
+            if (messageData.data) {
+              for (const [key, value] of Object.entries(query)) {
+                if (key === 'type' || key === 'limit' || key === 'timestamp') {
+                  continue; // Skip special fields
+                }
+                
+                if (key === 'participants' && typeof value === 'string') {
+                  // Special handling for participants
+                  const data = messageData.data;
+                  if (!data.participants || 
+                     (data.participants.lender !== value && 
+                      data.participants.borrower !== value)) {
+                    includeMessage = false;
+                    break;
+                  }
+                } else if (messageData.data[key] !== undefined && messageData.data[key] !== value) {
+                  includeMessage = false;
+                  break;
+                }
+              }
+            }
+            
+            if (includeMessage) {
+              results.push(messageData);
+              
+              // Break early if we've reached the limit
+              if (query.limit && results.length >= query.limit) {
+                break;
+              }
+            }
+          } catch (error) {
+            logger.warn(`Error processing message ${messageId}: ${error.message}`);
+          }
+        }
+      }
+      
+      return results;
+    } catch (error) {
+      logger.error(`Error querying Tangle: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
    * Get a message from the IOTA Tangle by message ID with caching
    * @param {string} network - Network name: 'iota', 'shimmer', or 'testnet'
    * @param {string} messageId - Message ID

@@ -7,6 +7,14 @@ module intellilend::lending_pool {
     use iota_framework::object::{Self, UID};
     use iota_framework::tx_context::{Self, TxContext};
     use iota_framework::event;
+    use iota_framework::transfer;
+    use iota_framework::token::{Self, SMR};
+    use iota_framework::identity;
+    use iota_framework::timestamp;
+    use iota_framework::transfer;
+    use iota_framework::token::{Self, SMR};
+    use iota_framework::identity;
+    use iota_framework::timestamp;
     
     /// Error codes
     const E_NOT_AUTHORIZED: u64 = 0;
@@ -150,16 +158,18 @@ module intellilend::lending_pool {
         account.deposits = account.deposits + amount;
         account.last_update = tx_context::epoch(ctx);
         
-        // Merge coin into pool's balance
-        // Note: In a real implementation, this would transfer to a coin store
-        // For simplicity, we're just updating the accounting
-        coin::destroy_zero(coin);
+        // Create Tangle record of deposit using token module
+        let tangle_record = token::create_deposit_record(&coin, sender, ctx);
         
-        // Emit deposit event
+        // Transfer the SMR token to the pool's balance
+        let pool_id = object::id_address(&pool.id);
+        token::transfer_to_address(coin, pool_id, ctx);
+        
+        // Emit deposit event with Tangle-compatible format
         event::emit(Deposit {
             user: sender,
             amount,
-            timestamp: tx_context::epoch_timestamp_ms(ctx),
+            timestamp: timestamp::now_seconds(ctx),
         });
     }
     
@@ -192,14 +202,20 @@ module intellilend::lending_pool {
         account.last_update = tx_context::epoch(ctx);
         
         // Create and transfer SMR coin to user
-        // Note: In a real implementation, this would transfer from a coin store
-        // For simplicity, we're just updating the accounting
+        let pool_id = object::id_address(&pool.id);
+        let withdraw_coin = token::withdraw_from_pool<SMR>(pool_id, amount, ctx);
         
-        // Emit withdraw event
+        // Create Tangle record of withdrawal
+        token::create_withdrawal_record(&withdraw_coin, sender, ctx);
+        
+        // Transfer the tokens to the user
+        transfer::transfer(withdraw_coin, sender);
+        
+        // Emit withdraw event with Tangle-compatible format
         event::emit(Withdraw {
             user: sender,
             amount,
-            timestamp: tx_context::epoch_timestamp_ms(ctx),
+            timestamp: timestamp::now_seconds(ctx),
         });
     }
     
@@ -338,14 +354,37 @@ module intellilend::lending_pool {
         });
     }
     
-    /// Verify a user's identity
+    /// Verify a user's identity using IOTA Identity framework
     public entry fun verify_identity(
         _: &AdminCap,
         account: &mut UserAccount,
+        identity_proof: vector<u8>,
         ctx: &mut TxContext
     ) {
+        // Verify the identity proof using IOTA Identity Framework
+        let verification_result = identity::verify_identity_proof(
+            account.owner,
+            identity_proof,
+            ctx
+        );
+        
+        // Update account only if verification was successful
+        assert!(verification_result, E_NOT_AUTHORIZED);
+        
         account.identity_verified = true;
         account.last_update = tx_context::epoch(ctx);
+        
+        // Emit identity verification event
+        event::emit(IdentityVerified {
+            user: account.owner,
+            timestamp: timestamp::now_seconds(ctx),
+        });
+    }
+    
+    /// Event emitted when a user's identity is verified
+    struct IdentityVerified has copy, drop {
+        user: address,
+        timestamp: u64,
     }
     
     /// Calculate maximum borrow amount based on collateral and risk score

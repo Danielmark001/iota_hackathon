@@ -7,6 +7,9 @@ module intellilend::risk_bridge {
     use iota_framework::tx_context::{Self, TxContext};
     use iota_framework::event;
     use iota_framework::crypto;
+    use iota_framework::streams::{Self, Channel, Message};
+    use iota_framework::identity::{Self, DID, VerificationMethod};
+    use iota_framework::timestamp;
     
     use intellilend::lending_pool::{Self, LendingPool, UserAccount};
     
@@ -16,12 +19,15 @@ module intellilend::risk_bridge {
     const E_INVALID_SIGNATURE: u64 = 2;
     const E_INVALID_RISK_SCORE: u64 = 3;
     
-    /// Bridge for cross-layer risk score updates
+    /// Bridge for cross-layer risk score updates integrated with IOTA Streams
     struct RiskBridge has key {
         id: UID,
         admin: address,
         oracle_public_key: vector<u8>,
         last_update: u64,
+        stream_channel: Option<Channel>,       // IOTA Streams channel for cross-layer messaging
+        identity_did: Option<DID>,             // IOTA Identity DID for verification
+        verification_methods: vector<VerificationMethod>, // Verification methods for bridge
     }
     
     /// AdminCap for the risk bridge
@@ -44,7 +50,7 @@ module intellilend::risk_bridge {
         source: String, // "L2" or "IOTA"
     }
     
-    /// Initialize the risk bridge
+    /// Initialize the risk bridge with IOTA Streams and Identity
     fun init(ctx: &mut TxContext) {
         let sender = tx_context::sender(ctx);
         
@@ -53,12 +59,18 @@ module intellilend::risk_bridge {
             id: object::new(ctx),
         };
         
-        // Create risk bridge with initial settings
+        // Create a new IOTA Identity DID for the bridge
+        let (bridge_did, verification_methods) = identity::create_did(sender, ctx);
+        
+        // Create risk bridge with initial settings and IOTA integrations
         let risk_bridge = RiskBridge {
             id: object::new(ctx),
             admin: sender,
             oracle_public_key: vector::empty(), // Will be set by admin later
-            last_update: tx_context::epoch(ctx),
+            last_update: timestamp::now_seconds(ctx),
+            stream_channel: option::none(), // Will be initialized separately
+            identity_did: option::some(bridge_did),
+            verification_methods,
         };
         
         // Transfer admin capability to sender
@@ -76,49 +88,81 @@ module intellilend::risk_bridge {
         ctx: &mut TxContext
     ) {
         bridge.oracle_public_key = public_key;
-        bridge.last_update = tx_context::epoch(ctx);
+        bridge.last_update = timestamp::now_seconds(ctx);
     }
     
-    /// Process a risk score update message from L2
+    /// Initialize IOTA Streams channel for cross-layer communication
+    public entry fun initialize_streams_channel(
+        _: &BridgeAdminCap,
+        bridge: &mut RiskBridge,
+        seed: vector<u8>, // Seed for channel creation
+        ctx: &mut TxContext
+    ) {
+        // Create a new IOTA Streams channel
+        let channel = streams::create_channel(seed, ctx);
+        
+        // Set the channel in the bridge
+        bridge.stream_channel = option::some(channel);
+        bridge.last_update = timestamp::now_seconds(ctx);
+        
+        // Emit event for channel creation
+        event::emit(StreamsChannelCreated {
+            channel_address: streams::get_channel_address(&channel),
+            timestamp: timestamp::now_seconds(ctx)
+        });
+    }
+    
+    /// Event emitted when a Streams channel is created
+    struct StreamsChannelCreated has copy, drop {
+        channel_address: vector<u8>,
+        timestamp: u64
+    }
+    
+    /// Process a risk score update message from L2 using IOTA Streams
     public entry fun process_risk_message(
         bridge: &RiskBridge,
         user_account: &mut UserAccount,
         lending_pool: &mut LendingPool,
         admin_cap: &lending_pool::AdminCap,
-        message: vector<u8>,
+        message_id: vector<u8>,
         signature: vector<u8>,
         ctx: &mut TxContext
     ) {
-        // Verify signature using bridge's oracle public key
+        // Fetch message from IOTA Streams if channel exists
+        let message_content = if (option::is_some(&bridge.stream_channel)) {
+            let channel = option::borrow(&bridge.stream_channel);
+            let stream_message = streams::fetch_message(channel, message_id);
+            streams::get_message_payload(&stream_message)
+        } else {
+            // Fallback to direct message if no channel is set up
+            message_id
+        };
+        
+        // Verify signature using bridge's oracle public key and IOTA cryptography
         assert!(
-            crypto::ed25519_verify(signature, bridge.oracle_public_key, message),
+            crypto::ed25519_verify(signature, bridge.oracle_public_key, message_content),
             E_INVALID_SIGNATURE
         );
         
-        // Decode message
-        let user_address: address;
-        let risk_score: u8;
-        let timestamp: u64;
-        
-        // Deserialize message (simplified - in reality would need proper BCS deserialization)
-        // For demonstration purposes, this is a placeholder
-        // We assume message format is: [address (32 bytes), risk_score (1 byte), timestamp (8 bytes)]
-        assert!(vector::length(&message) >= 41, E_INVALID_MESSAGE);
-        
-        // Extract user address (first 32 bytes)
-        let addr_bytes = vector::empty<u8>();
-        let i = 0;
-        while (i < 32) {
-            vector::push_back(&mut addr_bytes, *vector::borrow(&message, i));
-            i = i + 1;
+        // Verify with DID if available
+        if (option::is_some(&bridge.identity_did)) {
+            let did = option::borrow(&bridge.identity_did);
+            let verification_result = identity::verify_signature(
+                did,
+                &bridge.verification_methods,
+                message_content,
+                signature
+            );
+            assert!(verification_result, E_INVALID_SIGNATURE);
         };
-        user_address = address_from_bytes(addr_bytes);
         
-        // Extract risk score (next byte)
-        risk_score = *vector::borrow(&message, 32);
+        // Decode message using IOTA's message format
+        let decoded = streams::decode_message(message_content);
         
-        // Extract timestamp (next 8 bytes)
-        timestamp = u64_from_bytes(vector::slice(&message, 33, 41));
+        // Extract the risk score data
+        let user_address = streams::extract_address(&decoded);
+        let risk_score = streams::extract_risk_score(&decoded);
+        let timestamp = streams::extract_timestamp(&decoded);
         
         // Validate risk score
         assert!(risk_score <= 100, E_INVALID_RISK_SCORE);
@@ -126,7 +170,18 @@ module intellilend::risk_bridge {
         // Update user's risk score in lending pool
         lending_pool::update_risk_score(admin_cap, user_account, risk_score, ctx);
         
-        // Emit event for tracking
+        // Send confirmation back to L2 via IOTA Streams
+        if (option::is_some(&bridge.stream_channel)) {
+            let channel = option::borrow(&bridge.stream_channel);
+            let confirmation_message = streams::create_confirmation_message(
+                user_address,
+                risk_score,
+                timestamp::now_seconds(ctx)
+            );
+            streams::send_message(channel, confirmation_message, ctx);
+        };
+        
+        // Emit event for tracking with Tangle-compatible format
         event::emit(RiskScoreMessageProcessed {
             user_address,
             risk_score,

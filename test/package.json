@@ -1,0 +1,20 @@
+{
+  "name": "intellilend-iota-tests",
+  "version": "1.0.0",
+  "description": "Tests for IntelliLend IOTA Integration",
+  "main": "index.js",
+  "scripts": {
+    "test": "mocha \"iota-sdk/**/*.test.js\" --timeout 60000",
+    "test:client": "mocha \"iota-sdk/client.test.js\" --timeout 60000",
+    "test:wallet": "mocha \"iota-sdk/wallet.test.js\" --timeout 60000",
+    "test:identity": "mocha \"iota-sdk/identity.test.js\" --timeout 60000",
+    "test:streams": "mocha \"iota-sdk/streams.test.js\" --timeout 60000",
+    "test:performance": "mocha \"iota-sdk/**/*.test.js\" --grep 'Performance' --timeout 300000"
+  },
+  "dependencies": {
+    "chai": "^4.3.4",
+    "mocha": "^9.1.3",
+    "sinon": "^11.1.2",
+    "jest": "^27.4.7"
+  }
+}

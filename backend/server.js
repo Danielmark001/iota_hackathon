@@ -24,6 +24,11 @@ dotenv.config();
 const iotaSDK = require('../iota-sdk');
 const logger = require('../iota-sdk/utils/logger');
 
+// IOTA Identity and Streams Integration
+const iotaIdentity = require('../iota-sdk/identity');
+const iotaStreams = require('../iota-sdk/streams');
+const iotaCrossLayer = require('../iota-sdk/cross-layer');
+
 // Configure logger for IOTA integration
 logger.configure({
   level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
@@ -61,6 +66,8 @@ logger.info('Initializing enhanced IOTA SDK integration...');
 
 // Connect to IOTA client with resilience
 let iotaClient, iotaNodeManager, iotaWallet, iotaAccount;
+let iotaIdentityService, iotaStreamsService, iotaCrossLayerAggregator;
+let liquidationService, crossLayerMonitor;
 let transactionSubscribers = new Map(); // To store WebSocket subscribers for transaction updates
 
 async function initializeIotaSdk() {
@@ -75,6 +82,48 @@ async function initializeIotaSdk() {
     iotaNodeManager = nodeManager;
     
     logger.info('IOTA client connected successfully');
+    
+    // Initialize IOTA Identity service
+    logger.info('Initializing IOTA Identity service...');
+    try {
+        iotaIdentityService = await iotaIdentity.createIdentityService(client, {
+            network: network,
+            useLocalProofOfWork: true,
+            permanode: process.env.IOTA_PERMANODE_URL || undefined
+        });
+        logger.info('IOTA Identity service initialized successfully');
+    } catch (identityError) {
+        logger.error(`Failed to initialize IOTA Identity service: ${identityError.message}`);
+        logger.info('Continuing with limited identity functionality');
+    }
+    
+    // Initialize IOTA Streams service
+    logger.info('Initializing IOTA Streams service...');
+    try {
+        iotaStreamsService = await iotaStreams.createStreamsService(client, {
+            seed: process.env.STREAMS_SEED || undefined,
+            permanode: process.env.IOTA_PERMANODE_URL || undefined
+        });
+        logger.info('IOTA Streams service initialized successfully');
+    } catch (streamsError) {
+        logger.error(`Failed to initialize IOTA Streams service: ${streamsError.message}`);
+        logger.info('Continuing with limited streams functionality');
+    }
+    
+    // Initialize Cross-Layer Aggregator
+    logger.info('Initializing Cross-Layer Aggregator...');
+    try {
+        iotaCrossLayerAggregator = await iotaCrossLayer.createAggregator(client, {
+            bridgeAddress: process.env.BRIDGE_ADDRESS,
+            l1NetworkType: 'iota',
+            l2NetworkType: 'evm',
+            privateKey: process.env.AGGREGATOR_PRIVATE_KEY || undefined
+        });
+        logger.info('Cross-Layer Aggregator initialized successfully');
+    } catch (aggregatorError) {
+        logger.error(`Failed to initialize Cross-Layer Aggregator: ${aggregatorError.message}`);
+        logger.info('Continuing with limited cross-layer functionality');
+    }
     
     // Get network information with retry
     const networkInfo = await getNetworkInfo(iotaClient, iotaNodeManager);
@@ -158,11 +207,55 @@ async function initializeIotaSdk() {
       logger.error(`Error subscribing to block confirmations: ${subscriptionError.message}`);
     }
     
+    // Initialize Liquidation Service
+    logger.info('Initializing Automated Liquidation Service...');
+    try {
+        const LiquidationService = require('../ai-model/services/liquidation_service');
+        liquidationService = new LiquidationService({
+            lendingPoolAddress: process.env.LENDING_POOL_ADDRESS,
+            liquidationAuctionAddress: process.env.LIQUIDATION_AUCTION_ADDRESS,
+            provider: process.env.IOTA_EVM_RPC_URL,
+            privateKey: process.env.LIQUIDATOR_PRIVATE_KEY || undefined,
+            iotaClient: client,
+            iotaStreams: iotaStreamsService,
+            checkInterval: 120000 // 2 minutes
+        });
+        await liquidationService.start();
+        logger.info('Automated Liquidation Service initialized successfully');
+    } catch (liquidationError) {
+        logger.error(`Failed to initialize Liquidation Service: ${liquidationError.message}`);
+        logger.info('Continuing with manual liquidation functionality only');
+    }
+    
+    // Initialize Cross-Layer Monitor
+    logger.info('Initializing Cross-Layer Monitor...');
+    try {
+        const CrossLayerMonitor = require('../ai-model/services/cross_layer_monitor');
+        crossLayerMonitor = new CrossLayerMonitor({
+            bridgeAddress: process.env.BRIDGE_ADDRESS,
+            provider: process.env.IOTA_EVM_RPC_URL,
+            iotaClient: client,
+            iotaStreams: iotaStreamsService,
+            iotaCrossLayer: iotaCrossLayerAggregator,
+            checkInterval: 60000 // 1 minute
+        });
+        await crossLayerMonitor.start();
+        logger.info('Cross-Layer Monitor initialized successfully');
+    } catch (monitorError) {
+        logger.error(`Failed to initialize Cross-Layer Monitor: ${monitorError.message}`);
+        logger.info('Continuing with limited cross-layer monitoring functionality');
+    }
+    
     return {
       client: iotaClient,
       nodeManager: iotaNodeManager,
       wallet: iotaWallet,
-      account: iotaAccount
+      account: iotaAccount,
+      identityService: iotaIdentityService,
+      streamsService: iotaStreamsService,
+      crossLayerAggregator: iotaCrossLayerAggregator,
+      liquidationService: liquidationService,
+      crossLayerMonitor: crossLayerMonitor
     };
   } catch (error) {
     logger.error(`Failed to initialize IOTA SDK: ${error.message}`);
@@ -1007,6 +1100,159 @@ app.get('/api/user/:address', cacheMiddleware(60), async (req, res) => {
   }
 });
 
+/**
+ * Verify user identity with IOTA Identity
+ * @route POST /api/iota/identity/verify
+ * @param {object} request.body.required - Verification details
+ * @param {string} request.body.did - User's DID
+ * @param {object} request.body.credential - Verifiable credential
+ * @param {string} request.body.ethereumAddress - User's Ethereum address
+ * @returns {object} 200 - Verification successful
+ * @returns {object} 400 - Bad request error
+ * @returns {object} 500 - Server error
+ */
+app.post('/api/iota/identity/verify', validateRequest(['did', 'credential', 'ethereumAddress']), async (req, res) => {
+    try {
+        const { did, credential, ethereumAddress } = req.body;
+        
+        if (!iotaIdentityService) {
+            return res.status(503).json({ 
+                error: 'IOTA Identity service not initialized',
+                details: 'Identity services are currently unavailable. Please try again later.'
+            });
+        }
+        
+        logger.info(`Verifying identity for DID: ${did} and Ethereum address: ${ethereumAddress}`);
+        
+        // Verify DID and credential
+        const verificationResult = await iotaIdentityService.verifyCredential(
+            did, 
+            credential
+        );
+        
+        if (!verificationResult.isValid) {
+            return res.status(400).json({
+                error: 'Identity verification failed',
+                reason: verificationResult.reason || 'Invalid credential'
+            });
+        }
+        
+        // Associate DID with Ethereum address
+        await iotaIdentityService.associateAddress(did, ethereumAddress);
+        
+        // Get credential details
+        const credentialDetails = await iotaIdentityService.getCredentialDetails(credential);
+        
+        // If we have a lending pool contract and AI integration, update risk score
+        if (aiIntegration && aiIntegration.lendingPool) {
+            try {
+                // Improve risk score based on verified identity
+                const currentScore = await aiIntegration.lendingPool.riskScores(ethereumAddress);
+                const newScore = currentScore > 15 ? currentScore - 15 : 0;
+                
+                await aiIntegration.lendingPool.updateRiskScore(ethereumAddress, newScore);
+                logger.info(`Updated risk score for ${ethereumAddress} to ${newScore} based on identity verification`);
+            } catch (scoreError) {
+                logger.error(`Error updating risk score: ${scoreError.message}`);
+            }
+        }
+        
+        // Send verification event to IOTA Streams if available
+        if (iotaStreamsService) {
+            try {
+                await iotaStreamsService.sendMessage({
+                    type: 'IDENTITY_VERIFIED',
+                    did: did,
+                    ethereumAddress: ethereumAddress,
+                    timestamp: Date.now()
+                });
+            } catch (streamError) {
+                logger.error(`Error sending to Streams: ${streamError.message}`);
+            }
+        }
+        
+        res.json({
+            success: true,
+            did: did,
+            ethereumAddress: ethereumAddress,
+            timestamp: Date.now(),
+            expiration: credentialDetails.expirationDate,
+            trustLevel: credentialDetails.trustLevel || 'verified'
+        });
+    } catch (error) {
+        logger.error(`Error verifying identity: ${error.message}`);
+        res.status(500).json({ 
+            error: 'Error verifying identity', 
+            message: error.message 
+        });
+    }
+});
+
+/**
+ * Create a new DID for a user
+ * @route POST /api/iota/identity/create
+ * @param {object} request.body.required - Creation details
+ * @param {string} request.body.ethereumAddress - User's Ethereum address
+ * @returns {object} 200 - DID created successfully
+ * @returns {object} 500 - Server error
+ */
+app.post('/api/iota/identity/create', validateRequest(['ethereumAddress']), async (req, res) => {
+    try {
+        const { ethereumAddress } = req.body;
+        
+        if (!iotaIdentityService) {
+            return res.status(503).json({ 
+                error: 'IOTA Identity service not initialized',
+                details: 'Identity services are currently unavailable. Please try again later.'
+            });
+        }
+        
+        logger.info(`Creating new DID for Ethereum address: ${ethereumAddress}`);
+        
+        // Create new DID
+        const result = await iotaIdentityService.createIdentity({
+            controller: ethereumAddress,
+            metadata: {
+                ethereumAddress: ethereumAddress,
+                platform: 'IntelliLend',
+                createdAt: new Date().toISOString()
+            }
+        });
+        
+        // Associate DID with Ethereum address
+        await iotaIdentityService.associateAddress(result.did, ethereumAddress);
+        
+        // Send creation event to IOTA Streams if available
+        if (iotaStreamsService) {
+            try {
+                await iotaStreamsService.sendMessage({
+                    type: 'IDENTITY_CREATED',
+                    did: result.did,
+                    ethereumAddress: ethereumAddress,
+                    timestamp: Date.now()
+                });
+            } catch (streamError) {
+                logger.error(`Error sending to Streams: ${streamError.message}`);
+            }
+        }
+        
+        res.json({
+            success: true,
+            did: result.did,
+            document: result.document,
+            address: result.address,
+            explorerLink: `${result.explorerUrl}/${result.address}`,
+            ethereumAddress: ethereumAddress
+        });
+    } catch (error) {
+        logger.error(`Error creating identity: ${error.message}`);
+        res.status(500).json({ 
+            error: 'Error creating identity', 
+            message: error.message 
+        });
+    }
+});
+
 // Market data endpoint
 app.get('/api/market', cacheMiddleware(300), async (req, res) => {
   try {
@@ -1179,6 +1425,149 @@ app.get('/api/recommendations/:address', cacheMiddleware(1800), async (req, res)
   }
 });
 
+/**
+ * Create a new IOTA Streams channel
+ * @route POST /api/iota/streams/channel
+ * @security JWT
+ * @param {object} request.body - Channel details
+ * @param {string} request.body.name - Channel name
+ * @param {string} request.body.description - Channel description
+ * @returns {object} 200 - Channel created successfully
+ * @returns {object} 500 - Server error
+ */
+app.post('/api/iota/streams/channel', authenticate, async (req, res) => {
+    try {
+        const { name, description } = req.body;
+        
+        if (!iotaStreamsService) {
+            return res.status(503).json({ 
+                error: 'IOTA Streams service not initialized',
+                details: 'Streams services are currently unavailable. Please try again later.'
+            });
+        }
+        
+        logger.info(`Creating new Streams channel: ${name}`);
+        
+        // Create new channel
+        const channel = await iotaStreamsService.createChannel({
+            name: name || 'IntelliLend Channel',
+            description: description || 'IntelliLend secure messaging channel',
+            metadata: {
+                creator: req.user.address,
+                createdAt: new Date().toISOString()
+            }
+        });
+        
+        res.json({
+            success: true,
+            channelId: channel.id,
+            channelAddress: channel.address,
+            announcementLink: channel.announcementLink,
+            seed: channel.seed, // Only share with the owner
+            presharedKey: channel.presharedKey // Only share with the owner
+        });
+    } catch (error) {
+        logger.error(`Error creating Streams channel: ${error.message}`);
+        res.status(500).json({ 
+            error: 'Error creating Streams channel', 
+            message: error.message 
+        });
+    }
+});
+
+/**
+ * Send a message to an IOTA Streams channel
+ * @route POST /api/iota/streams/message
+ * @security JWT
+ * @param {object} request.body.required - Message details
+ * @param {string} request.body.channelId - Channel ID
+ * @param {string} request.body.messageType - Message type
+ * @param {object} request.body.content - Message content
+ * @returns {object} 200 - Message sent successfully
+ * @returns {object} 500 - Server error
+ */
+app.post('/api/iota/streams/message', authenticate, validateRequest(['channelId', 'messageType', 'content']), async (req, res) => {
+    try {
+        const { channelId, messageType, content } = req.body;
+        
+        if (!iotaStreamsService) {
+            return res.status(503).json({ 
+                error: 'IOTA Streams service not initialized',
+                details: 'Streams services are currently unavailable. Please try again later.'
+            });
+        }
+        
+        logger.info(`Sending message to channel ${channelId} of type ${messageType}`);
+        
+        // Send message
+        const result = await iotaStreamsService.sendMessage({
+            channelId: channelId,
+            messageType: messageType,
+            content: content,
+            sender: req.user.address,
+            timestamp: Date.now()
+        });
+        
+        res.json({
+            success: true,
+            messageId: result.messageId,
+            channelId: channelId,
+            messageType: messageType,
+            timestamp: result.timestamp
+        });
+    } catch (error) {
+        logger.error(`Error sending Streams message: ${error.message}`);
+        res.status(500).json({ 
+            error: 'Error sending Streams message', 
+            message: error.message 
+        });
+    }
+});
+
+/**
+ * Get messages from an IOTA Streams channel
+ * @route GET /api/iota/streams/messages/:channelId
+ * @security JWT
+ * @param {string} channelId.path.required - Channel ID
+ * @returns {object} 200 - Messages retrieved successfully
+ * @returns {object} 500 - Server error
+ */
+app.get('/api/iota/streams/messages/:channelId', authenticate, async (req, res) => {
+    try {
+        const { channelId } = req.params;
+        
+        if (!iotaStreamsService) {
+            return res.status(503).json({ 
+                error: 'IOTA Streams service not initialized',
+                details: 'Streams services are currently unavailable. Please try again later.'
+            });
+        }
+        
+        logger.info(`Fetching messages from channel ${channelId}`);
+        
+        // Get messages
+        const messages = await iotaStreamsService.getMessages({
+            channelId: channelId,
+            limit: parseInt(req.query.limit) || 50,
+            fromTimestamp: req.query.fromTimestamp ? parseInt(req.query.fromTimestamp) : undefined
+        });
+        
+        res.json({
+            channelId: channelId,
+            messages: messages,
+            count: messages.length,
+            lastFetched: Date.now()
+        });
+    } catch (error) {
+        logger.error(`Error fetching Streams messages: ${error.message}`);
+        res.status(500).json({ 
+            error: 'Error fetching Streams messages', 
+            message: error.message,
+            channelId: req.params.channelId
+        });
+    }
+});
+
 // Bridge messages endpoint - now using real IOTA bridge when available
 app.get('/api/bridge/messages/:address', async (req, res) => {
   try {
@@ -1261,6 +1650,148 @@ function generateSimulatedBridgeMessages(address) {
   
   return messages;
 }
+
+/**
+ * Send a cross-layer message from L2 to L1
+ * @route POST /api/cross-layer/send
+ * @security JWT
+ * @param {object} request.body.required - Message details
+ * @param {string} request.body.targetAddress - Target address in Move (L1)
+ * @param {string} request.body.messageType - Message type
+ * @param {object} request.body.payload - Message payload
+ * @returns {object} 200 - Message sent successfully
+ * @returns {object} 500 - Server error
+ */
+app.post('/api/cross-layer/send', authenticate, validateRequest(['targetAddress', 'messageType', 'payload']), async (req, res) => {
+    try {
+        const { targetAddress, messageType, payload } = req.body;
+        
+        if (!iotaCrossLayerAggregator) {
+            return res.status(503).json({ 
+                error: 'Cross-Layer Aggregator not initialized',
+                details: 'Cross-layer services are currently unavailable. Please try again later.'
+            });
+        }
+        
+        logger.info(`Sending cross-layer message to ${targetAddress} of type ${messageType}`);
+        
+        // Send message with both bridge and streams for redundancy
+        const result = await iotaCrossLayerAggregator.sendMessageToL1({
+            targetAddress: targetAddress,
+            messageType: messageType,
+            payload: payload,
+            sender: req.user.address,
+            useBridge: true,
+            useStreams: true
+        });
+        
+        res.json({
+            success: true,
+            messageId: result.messageId,
+            targetAddress: targetAddress,
+            messageType: messageType,
+            bridgeStatus: result.bridgeStatus,
+            streamsStatus: result.streamsStatus,
+            timestamp: Date.now(),
+            monitoringLink: `/api/cross-layer/status/${result.messageId}`
+        });
+    } catch (error) {
+        logger.error(`Error sending cross-layer message: ${error.message}`);
+        res.status(500).json({ 
+            error: 'Error sending cross-layer message', 
+            message: error.message 
+        });
+    }
+});
+
+/**
+ * Check the status of a cross-layer message
+ * @route GET /api/cross-layer/status/:messageId
+ * @param {string} messageId.path.required - Message ID
+ * @returns {object} 200 - Message status
+ * @returns {object} 404 - Message not found
+ * @returns {object} 500 - Server error
+ */
+app.get('/api/cross-layer/status/:messageId', async (req, res) => {
+    try {
+        const { messageId } = req.params;
+        
+        if (!iotaCrossLayerAggregator) {
+            return res.status(503).json({ 
+                error: 'Cross-Layer Aggregator not initialized',
+                details: 'Cross-layer services are currently unavailable. Please try again later.'
+            });
+        }
+        
+        logger.info(`Checking cross-layer message status for ${messageId}`);
+        
+        // Get message status
+        const status = await iotaCrossLayerAggregator.getMessageStatus(messageId);
+        
+        if (!status) {
+            return res.status(404).json({
+                error: 'Message not found',
+                messageId: messageId
+            });
+        }
+        
+        res.json({
+            messageId: messageId,
+            status: status.status,
+            bridgeStatus: status.bridgeStatus,
+            streamsStatus: status.streamsStatus,
+            confirmations: status.confirmations,
+            timestamp: status.timestamp,
+            updatedAt: Date.now()
+        });
+    } catch (error) {
+        logger.error(`Error checking cross-layer message status: ${error.message}`);
+        res.status(500).json({ 
+            error: 'Error checking message status', 
+            message: error.message,
+            messageId: req.params.messageId
+        });
+    }
+});
+
+/**
+ * Get cross-layer messages for a user
+ * @route GET /api/cross-layer/messages/:address
+ * @param {string} address.path.required - User address
+ * @returns {object} 200 - Messages retrieved successfully
+ * @returns {object} 500 - Server error
+ */
+app.get('/api/cross-layer/messages/:address', async (req, res) => {
+    try {
+        const { address } = req.params;
+        
+        if (!iotaCrossLayerAggregator) {
+            return res.status(503).json({ 
+                error: 'Cross-Layer Aggregator not initialized',
+                details: 'Cross-layer services are currently unavailable. Please try again later.'
+            });
+        }
+        
+        logger.info(`Fetching cross-layer messages for ${address}`);
+        
+        // Get messages
+        const messages = await iotaCrossLayerAggregator.getUserMessages(address);
+        
+        res.json({
+            address: address,
+            messages: messages,
+            count: messages.length,
+            lastFetched: Date.now()
+        });
+    } catch (error) {
+        logger.error(`Error fetching cross-layer messages: ${error.message}`);
+        res.status(500).json({ 
+            error: 'Error fetching cross-layer messages', 
+            message: error.message,
+            address: req.params.address
+        });
+    }
+});
 
 // Add model validation endpoint
 app.get('/api/model/performance', authenticate, async (req, res) => {
