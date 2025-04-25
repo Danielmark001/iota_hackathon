@@ -2,6 +2,12 @@
 
 ![IntelliLend Logo](docs/images/logo.png)
 
+**Team:** [<img src="https://github.com/Danielmark001.png" height="20" width="20" /> Daniel Mark](https://github.com/Danielmark001) |
+[<img src="https://github.com/WilliamN40.png" height="20" width="20" /> William Notowibowo](https://github.com/WilliamN40) |
+
+**Docs:** 
+[Project Report](https://github.com/Danielmark001/iota-hackathon/blob/main/uml%20diagram/uml-sequence-diagram.png) 
+
 ## 🏆 IOTA DefAI Hackathon Project
 
 IntelliLend is an intelligent lending protocol that leverages IOTA's unique architecture and AI to revolutionize DeFi lending. The platform uses machine learning to assess borrower risk, optimize interest rates, and enhance the security and efficiency of lending operations across the IOTA ecosystem.
