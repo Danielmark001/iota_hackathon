@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IntelliLend - AI-Powered DeFi Lending Platform</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      margin: 0;
+      padding: 0;
+      background-color: #f5f5f5;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+    
+    header {
+      background-color: white;
+      padding: 1rem 0;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      position: fixed;
+      width: 100%;
+      top: 0;
+      z-index: 100;
+    }
+    
+    .header-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 2rem;
+    }
+    
+    .logo {
+      font-size: 1.5rem;
+      font-weight: bold;
+      color: #333;
+      text-decoration: none;
+    }
+    
+    .logo span {
+      color: #1976d2;
+    }
+    
+    nav ul {
+      display: flex;
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    
+    nav ul li {
+      margin-left: 1.5rem;
+    }
+    
+    nav ul li a {
+      text-decoration: none;
+      color: #555;
+      transition: color 0.3s;
+    }
+    
+    nav ul li a:hover {
+      color: #1976d2;
+    }
+    
+    .content {
+      margin-top: 80px;
+    }
+    
+    .hero {
+      text-align: center;
+      padding: 3rem 1rem;
+      background: linear-gradient(135deg, #1976d2 0%, #2196f3 100%);
+      color: white;
+      border-radius: 8px;
+      margin-bottom: 2rem;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    h1 {
+      margin-top: 0;
+      font-size: 2.5rem;
+    }
+    
+    h2 {
+      font-size: 1.8rem;
+      margin-top: 2rem;
+      color: #1976d2;
+    }
+    
+    p {
+      margin-bottom: 1rem;
+    }
+    
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 2rem;
+      margin: 2rem 0;
+    }
+    
+    .feature-card {
+      background: white;
+      padding: 1.5rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+    
+    .feature-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+    }
+    
+    .feature-card h3 {
+      color: #1976d2;
+      margin-top: 0;
+    }
+    
+    .button {
+      display: inline-block;
+      background-color: #1976d2;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 4px;
+      text-decoration: none;
+      font-weight: bold;
+      margin: 1rem 0.5rem;
+      transition: background-color 0.3s;
+    }
+    
+    .button:hover {
+      background-color: #1565c0;
+    }
+    
+    .secondary-button {
+      background-color: transparent;
+      border: 2px solid #1976d2;
+      color: #1976d2;
+    }
+    
+    .secondary-button:hover {
+      background-color: rgba(25, 118, 210, 0.1);
+    }
+    
+    .cta {
+      text-align: center;
+      margin: 3rem 0;
+    }
+    
+    .footer {
+      text-align: center;
+      margin-top: 2rem;
+      padding-top: 2rem;
+      border-top: 1px solid #eee;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-container">
+      <a href="/" class="logo"><span>Intelli</span>Lend</a>
+      <nav>
+        <ul>
+          <li><a href="/">Home</a></li>
+          <li><a href="/dashboard">Dashboard</a></li>
+          <li><a href="/deposit">Deposit</a></li>
+          <li><a href="/borrow">Borrow</a></li>
+          <li><a href="/identity">Identity</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <div class="content">
+    <div class="container">
+      <div class="hero">
+        <h1><span style="color: #bbdefb">Intelli</span>Lend</h1>
+        <p>AI-Powered DeFi Lending Platform on IOTA</p>
+        <div>
+          <a href="/dashboard" class="button">Go to Dashboard</a>
+          <a href="/deposit" class="button secondary-button">Deposit</a>
+          <a href="/borrow" class="button secondary-button">Borrow</a>
+        </div>
+      </div>
+      
+      <h2>Welcome to IntelliLend</h2>
+      <p>
+        Experience the future of decentralized lending with intelligent risk assessment, 
+        personalized rates, and optimized capital efficiency.
+      </p>
+      
+      <div class="features">
+        <div class="feature-card">
+          <h3>AI Risk Assessment</h3>
+          <p>Machine learning models analyze on-chain activity for personalized risk scoring and dynamic interest rates.</p>
+        </div>
+        
+        <div class="feature-card">
+          <h3>Privacy-Preserving Identity</h3>
+          <p>Zero-knowledge proofs enable secure identity verification without compromising user privacy.</p>
+        </div>
+        
+        <div class="feature-card">
+          <h3>Cross-Chain Liquidity</h3>
+          <p>Aggregate liquidity from multiple chains through IOTA's cross-chain integration for optimal capital efficiency.</p>
+        </div>
+        
+        <div class="feature-card">
+          <h3>Dual-Layer Architecture</h3>
+          <p>Leverages IOTA's unique Layer 1 (Move) and Layer 2 (EVM) capabilities for enhanced security and efficiency.</p>
+        </div>
+      </div>
+      
+      <div class="cta">
+        <h2>Ready to get started?</h2>
+        <p>Join IntelliLend today and experience the future of DeFi lending powered by AI and IOTA.</p>
+        <a href="/dashboard" class="button">Launch App</a>
+      </div>
+      
+      <div class="footer">
+        <p>IntelliLend &copy; 2023 | IOTA DefAI Hackathon Project</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

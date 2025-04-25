@@ -1,52 +1,26 @@
 /**
- * Simple HTTP server for the frontend
+ * Simple Express server for serving the React frontend
  */
-
-const http = require('http');
-const fs = require('fs');
+const express = require('express');
 const path = require('path');
+const dotenv = require('dotenv');
 
+// Load environment variables
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
+
+const app = express();
 const PORT = process.env.FRONTEND_PORT || 3000;
 
-const MIME_TYPES = {
-  '.html': 'text/html',
-  '.css': 'text/css',
-  '.js': 'text/javascript',
-  '.json': 'application/json',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.svg': 'image/svg+xml',
-};
+// Serve static files from the React build
+app.use(express.static(path.join(__dirname, 'build')));
 
-const server = http.createServer((req, res) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-  
-  // Serve index.html for all routes to support SPA
-  let filePath = path.join(__dirname, 'public', req.url === '/' ? 'index.html' : req.url);
-  
-  // Check if file exists
-  fs.access(filePath, fs.constants.F_OK, (err) => {
-    if (err) {
-      // File not found, serve index.html for SPA routing
-      filePath = path.join(__dirname, 'public', 'index.html');
-    }
-    
-    const extname = path.extname(filePath);
-    const contentType = MIME_TYPES[extname] || 'text/html';
-    
-    fs.readFile(filePath, (err, content) => {
-      if (err) {
-        res.writeHead(500);
-        res.end('Error loading: ' + filePath);
-      } else {
-        res.writeHead(200, { 'Content-Type': contentType });
-        res.end(content, 'utf-8');
-      }
-    });
-  });
+// Respond to all GET requests not handled by static files with the React app
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'build', 'index.html'));
 });
 
-server.listen(PORT, () => {
-  console.log(`Frontend server running at http://localhost:${PORT}/`);
+// Start server
+app.listen(PORT, () => {
+  console.log(`Frontend server running on port ${PORT}`);
+  console.log(`Open http://localhost:${PORT} in your browser`);
 });

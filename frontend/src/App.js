@@ -1,60 +1,50 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
-import CssBaseline from '@mui/material/CssBaseline';
-import Box from '@mui/material/Box';
-import Typography from '@mui/material/Typography';
-import Link from '@mui/material/Link';
-import Dashboard from './Dashboard';
-
-// Create a theme
-const theme = createTheme({
-  palette: {
-    mode: 'dark',
-    primary: {
-      main: '#90caf9',
-    },
-    secondary: {
-      main: '#f48fb1',
-    },
-  },
-});
+import { Routes, Route } from 'react-router-dom';
+import { CssBaseline, Box } from '@mui/material';
+import Header from './components/layout/Header';
+import Footer from './components/layout/Footer';
+import Dashboard from './pages/Dashboard';
+import DepositPage from './pages/DepositPage';
+import BorrowPage from './pages/BorrowPage';
+import IdentityPage from './pages/IdentityPage';
+import RiskAssessmentPage from './pages/RiskAssessmentPage';
+import PortfolioPage from './pages/PortfolioPage';
+import SettingsPage from './pages/SettingsPage';
+import LandingPage from './pages/LandingPage';
+import NotFound from './pages/NotFound';
+import LoadingBackdrop from './components/ui/LoadingBackdrop';
 
 function App() {
-  return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <Router>
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </Router>
-    </ThemeProvider>
-  );
-}
+  // DEVELOPMENT MODE: No authentication required, all routes accessible
+  console.log("⚠️ DEV MODE: Authentication bypassed, all routes accessible");
 
-function NotFound() {
+  // Direct component rendering for development
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100vh',
-      }}
-    >
-      <Typography variant="h1" component="h1" gutterBottom>
-        404
-      </Typography>
-      <Typography variant="h4" component="h2" gutterBottom>
-        Page Not Found
-      </Typography>
-      <Link href="/" variant="body1">
-        Go back to dashboard
-      </Link>
-    </Box>
+    <>
+      <CssBaseline />
+      <div className="app-container">
+        <Header />
+        <Box className="content-wrapper">
+          <Routes>
+            {/* Public routes */}
+            <Route path="/" element={<LandingPage />} />
+            
+            {/* All routes directly accessible for development */}
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/deposit" element={<DepositPage />} />
+            <Route path="/borrow" element={<BorrowPage />} />
+            <Route path="/identity" element={<IdentityPage />} />
+            <Route path="/risk" element={<RiskAssessmentPage />} />
+            <Route path="/portfolio" element={<PortfolioPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            
+            {/* 404 route */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Box>
+        <Footer />
+      </div>
+    </>
   );
 }
 

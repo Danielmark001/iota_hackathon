@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IntelliLend - Dashboard</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      margin: 0;
+      padding: 0;
+      background-color: #f5f5f5;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+    
+    header {
+      background-color: white;
+      padding: 1rem 0;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      position: fixed;
+      width: 100%;
+      top: 0;
+      z-index: 100;
+    }
+    
+    .header-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 2rem;
+    }
+    
+    .logo {
+      font-size: 1.5rem;
+      font-weight: bold;
+      color: #333;
+      text-decoration: none;
+    }
+    
+    .logo span {
+      color: #1976d2;
+    }
+    
+    nav ul {
+      display: flex;
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    
+    nav ul li {
+      margin-left: 1.5rem;
+    }
+    
+    nav ul li a {
+      text-decoration: none;
+      color: #555;
+      transition: color 0.3s;
+    }
+    
+    nav ul li a:hover {
+      color: #1976d2;
+    }
+    
+    .content {
+      margin-top: 80px;
+    }
+    
+    .dashboard {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    
+    .card {
+      background: white;
+      padding: 1.5rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+    
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    
+    .card-title {
+      font-size: 1.1rem;
+      font-weight: bold;
+      margin: 0;
+      color: #555;
+    }
+    
+    .card-value {
+      font-size: 1.8rem;
+      font-weight: bold;
+      margin: 0.5rem 0;
+      color: #1976d2;
+    }
+    
+    .card-secondary {
+      font-size: 0.9rem;
+      color: #777;
+    }
+    
+    .actions {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1rem;
+      margin: 2rem 0;
+    }
+    
+    .action-button {
+      display: block;
+      text-align: center;
+      background-color: white;
+      padding: 1.2rem;
+      border-radius: 8px;
+      text-decoration: none;
+      color: #333;
+      font-weight: bold;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+    
+    .action-button:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    .action-button.primary {
+      background: linear-gradient(135deg, #1976d2 0%, #2196f3 100%);
+      color: white;
+    }
+    
+    .action-button.secondary {
+      background: linear-gradient(135deg, #9c27b0 0%, #ba68c8 100%);
+      color: white;
+    }
+    
+    .large-card {
+      grid-column: span 2;
+    }
+    
+    h1 {
+      margin-top: 0;
+      margin-bottom: 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .refresh-button {
+      background: none;
+      border: none;
+      font-size: 1rem;
+      color: #777;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+    }
+    
+    .address {
+      display: inline-block;
+      font-family: monospace;
+      background-color: #f0f0f0;
+      padding: 0.3rem 0.6rem;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      margin-bottom: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-container">
+      <a href="/" class="logo"><span>Intelli</span>Lend</a>
+      <nav>
+        <ul>
+          <li><a href="/">Home</a></li>
+          <li><a href="/dashboard">Dashboard</a></li>
+          <li><a href="/deposit">Deposit</a></li>
+          <li><a href="/borrow">Borrow</a></li>
+          <li><a href="/identity">Identity</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <div class="content">
+    <div class="container">
+      <h1>
+        Dashboard
+        <button class="refresh-button">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
+            <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+          </svg>
+          Refresh
+        </button>
+      </h1>
+      
+      <div class="address">Connected: 0x71C7656EC7ab88b098defB751B7401B5f6d8976F</div>
+      
+      <div class="dashboard">
+        <div class="card">
+          <div class="card-header">
+            <p class="card-title">Total Deposited</p>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="#1976d2" viewBox="0 0 16 16">
+              <path d="M4 10.781c.148 1.667 1.513 2.85 3.591 3.003V15h1.043v-1.216c2.27-.179 3.678-1.438 3.678-3.3 0-1.59-.947-2.51-2.956-3.028l-.722-.187V3.467c1.122.11 1.879.714 2.07 1.616h1.47c-.166-1.6-1.54-2.748-3.54-2.875V1H7.591v1.233c-1.939.23-3.27 1.472-3.27 3.156 0 1.454.966 2.483 2.661 2.917l.61.162v4.031c-1.149-.17-1.94-.8-2.131-1.718H4zm3.391-3.836c-1.043-.263-1.6-.825-1.6-1.616 0-.944.704-1.641 1.8-1.828v3.495l-.2-.05zm1.591 1.872c1.287.323 1.852.859 1.852 1.769 0 1.097-.826 1.828-2.2 1.939V8.73l.348.086z"/>
+            </svg>
+          </div>
+          <p class="card-value">$1,500.00</p>
+          <p class="card-secondary">IOTA Lending Pool</p>
+        </div>
+        
+        <div class="card">
+          <div class="card-header">
+            <p class="card-title">Total Borrowed</p>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="#9c27b0" viewBox="0 0 16 16">
+              <path d="M1 3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1H1zm7 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>
+              <path d="M0 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V5zm3 0a2 2 0 0 1-2 2v4a2 2 0 0 1 2 2h10a2 2 0 0 1 2-2V7a2 2 0 0 1-2-2H3z"/>
+            </svg>
+          </div>
+          <p class="card-value">$800.00</p>
+          <p class="card-secondary">7.5% APR</p>
+        </div>
+        
+        <div class="card">
+          <div class="card-header">
+            <p class="card-title">Collateral</p>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="#4caf50" viewBox="0 0 16 16">
+              <path d="M8 1a2 2 0 0 1 2 2v4H6V3a2 2 0 0 1 2-2zm3 6V3a3 3 0 0 0-6 0v4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
+            </svg>
+          </div>
+          <p class="card-value">$2,000.00</p>
+          <p class="card-secondary">IOTA + sIOTA</p>
+        </div>
+        
+        <div class="card">
+          <div class="card-header">
+            <p class="card-title">Market APY</p>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="#ff9800" viewBox="0 0 16 16">
+              <path fill-rule="evenodd" d="M8 12a.5.5 0 0 0 .5-.5V5.707l2.146 2.147a.5.5 0 0 0 .708-.708l-3-3a.5.5 0 0 0-.708 0l-3 3a.5.5 0 1 0 .708.708L7.5 5.707V11.5a.5.5 0 0 0 .5.5z"/>
+            </svg>
+          </div>
+          <p class="card-value">5.2%</p>
+          <p class="card-secondary">Supply APY</p>
+        </div>
+      </div>
+      
+      <div class="dashboard">
+        <div class="card large-card">
+          <div class="card-header">
+            <p class="card-title">Risk Score</p>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="#ff9800" viewBox="0 0 16 16">
+              <path d="M9.05.435c-.58-.58-1.52-.58-2.1 0L.436 6.95c-.58.58-.58 1.519 0 2.098l6.516 6.516c.58.58 1.519.58 2.098 0l6.516-6.516c.58-.58.58-1.519 0-2.098L9.05.435zM8 4a.905.905 0 0 1 .9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 4.995A.905.905 0 0 1 8 4zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/>
+            </svg>
+          </div>
+          <p class="card-value">45 / 100</p>
+          <p class="card-secondary">Lower score = Lower risk</p>
+          
+          <div style="background-color: #f0f0f0; height: 12px; border-radius: 6px; margin: 1rem 0; position: relative;">
+            <div style="position: absolute; width: 100%; height: 100%; display: flex; justify-content: space-between;">
+              <span style="font-size: 0.7rem; transform: translateY(-100%); color: #4caf50;">Low Risk</span>
+              <span style="font-size: 0.7rem; transform: translateY(-100%); color: #ff9800;">Medium Risk</span>
+              <span style="font-size: 0.7rem; transform: translateY(-100%); color: #f44336;">High Risk</span>
+            </div>
+            <div style="width: 45%; height: 100%; background: linear-gradient(90deg, #4caf50 0%, #ff9800 50%, #f44336 100%); border-radius: 6px;"></div>
+            <div style="position: absolute; top: 50%; transform: translate(45%, -50%); width: 16px; height: 16px; border-radius: 50%; background-color: white; border: 2px solid #1976d2;"></div>
+          </div>
+          
+          <p style="margin-top: 2rem;">
+            <a href="/identity" style="color: #1976d2; text-decoration: none; font-weight: bold;">
+              Verify your identity to improve your risk score →
+            </a>
+          </p>
+        </div>
+        
+        <div class="card">
+          <div class="card-header">
+            <p class="card-title">Health Factor</p>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="#4caf50" viewBox="0 0 16 16">
+              <path d="m8 2.748-.717-.737C5.6.281 2.514.878 1.4 3.053c-.523 1.023-.641 2.5.314 4.385.92 1.815 2.834 3.989 6.286 6.357 3.452-2.368 5.365-4.542 6.286-6.357.955-1.886.838-3.362.314-4.385C13.486.878 10.4.28 8.717 2.01L8 2.748zM8 15C-7.333 4.868 3.279-3.04 7.824 1.143c.06.055.119.112.176.171a3.12 3.12 0 0 1 .176-.17C12.72-3.042 23.333 4.867 8 15z"/>
+            </svg>
+          </div>
+          <p class="card-value">1.8</p>
+          <p class="card-secondary">Safe zone (above 1.0)</p>
+          
+          <div style="background-color: #f0f0f0; height: 8px; border-radius: 4px; margin: 1rem 0; position: relative;">
+            <div style="position: absolute; width: 100%; height: 100%; display: flex; justify-content: space-between;">
+              <span style="font-size: 0.7rem; transform: translateY(-100%); color: #f44336;">1.0</span>
+              <span style="font-size: 0.7rem; transform: translateY(-100%); color: #ff9800;">1.5</span>
+              <span style="font-size: 0.7rem; transform: translateY(-100%); color: #4caf50;">2.0+</span>
+            </div>
+            <div style="width: 90%; height: 100%; background: linear-gradient(90deg, #f44336 0%, #ff9800 50%, #4caf50 100%); border-radius: 4px;"></div>
+            <div style="position: absolute; top: 50%; transform: translate(80%, -50%); width: 12px; height: 12px; border-radius: 50%; background-color: white; border: 2px solid #1976d2;"></div>
+          </div>
+        </div>
+      </div>
+      
+      <h2>Quick Actions</h2>
+      
+      <div class="actions">
+        <a href="/deposit" class="action-button primary">
+          Deposit
+        </a>
+        <a href="/borrow" class="action-button secondary">
+          Borrow
+        </a>
+        <a href="/identity" class="action-button">
+          Verify Identity
+        </a>
+        <a href="/portfolio" class="action-button">
+          Portfolio
+        </a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
