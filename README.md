@@ -150,10 +150,6 @@ For detailed documentation, see the [docs folder](docs/).
 - [Move Programming Language](https://docs.iota.org/shimmer/smart-contracts/guide/move/getting_started)
 - [IOTA Identity Framework](https://wiki.iota.org/identity.rs/introduction)
 
-## 👥 Team
-
-- Daniel Chen (Lead Developer)
-- [Add your team members here]
 
 ## 📣 Feedback and Contributions
 
