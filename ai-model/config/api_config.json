@@ -1,0 +1,32 @@
+{
+  "model_dir": "../models",
+  "model_version": "latest",
+  "model_type": "ensemble",
+  "evm_rpc_url": "https://api.testnet.shimmer.network/evm",
+  "iota_node_url": "https://api.testnet.iota.cafe",
+  "indexer_url": "https://indexer.testnet.iota.cafe",
+  "graphql_url": "https://graphql.testnet.iota.cafe",
+  "streams_api_url": "https://api.testnet.shimmer.network/streams",
+  "websocket_url": "wss://api.testnet.iota.cafe",
+  "lending_pool_address": "0x9A9f2CCfdE556A7E9Ff0848998Aa4a0CFD8863AE",
+  "zk_verifier_address": "0x68B1D87F95878fE05B998F19b66F4baba5De1aed",
+  "zk_bridge_address": "0x3Aa5ebB10DC797CAC828524e59A333d0A371443c",
+  "bridge_address": "0x3Aa5ebB10DC797CAC828524e59A333d0A371443c",
+  "liquidation_auction_address": "0x12Ab342bB35d6E95c8292f2f9DAd16F61cc8923B",
+  "move_lending_pool_address": "0x21feA4CeF471E7DEC974889cd7C1e23B5B4D9b6a",
+  "move_risk_bridge_address": "0x7BE486a1a5A5df9f37056179D2a1879516800ee9",
+  "chain_id": 1,
+  "threshold": 0.5,
+  "risk_classes": [
+    {"min": 0, "max": 20, "label": "Very Low Risk"},
+    {"min": 20, "max": 40, "label": "Low Risk"},
+    {"min": 40, "max": 60, "label": "Medium Risk"},
+    {"min": 60, "max": 80, "label": "High Risk"},
+    {"min": 80, "max": 100, "label": "Very High Risk"}
+  ],
+  "port": 5000,
+  "debug": false,
+  "use_mocks": false,
+  "use_local_model": true,
+  "enable_cross_layer": true
+}

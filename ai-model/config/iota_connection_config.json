@@ -1,0 +1,39 @@
+{
+  "api_url": "http://localhost:3002",
+  "request_timeout": 30,
+  "retry_attempts": 3,
+  "retry_delay": 2,
+  "cache_duration": 120,
+  "network": "testnet",
+  "nodes": {
+    "testnet": [
+      "https://api.testnet.iota.cafe",
+      "https://testnet.shimmer.network",
+      "https://testnet.shimmer.iota-1.workers.dev", 
+      "https://shimmer-testnet.api.nodesail.io"
+    ]
+  },
+  "headers": {
+    "Content-Type": "application/json",
+    "Accept": "application/json"
+  },
+  "endpoints": {
+    "json_rpc": "https://api.testnet.iota.cafe",
+    "indexer": "https://indexer.testnet.iota.cafe",
+    "graphql": "https://graphql.testnet.iota.cafe",
+    "websocket": "wss://api.testnet.iota.cafe",
+    "faucet": "https://faucet.testnet.iota.cafe"
+  },
+  "contracts": {
+    "lending_pool_address": "0x9A9f2CCfdE556A7E9Ff0848998Aa4a0CFD8863AE",
+    "zk_verifier_address": "0x68B1D87F95878fE05B998F19b66F4baba5De1aed",
+    "zk_bridge_address": "0x3Aa5ebB10DC797CAC828524e59A333d0A371443c",
+    "bridge_address": "0x3Aa5ebB10DC797CAC828524e59A333d0A371443c",
+    "liquidation_auction_address": "0x12Ab342bB35d6E95c8292f2f9DAd16F61cc8923B",
+    "move_lending_pool_address": "0x21feA4CeF471E7DEC974889cd7C1e23B5B4D9b6a",
+    "move_risk_bridge_address": "0x7BE486a1a5A5df9f37056179D2a1879516800ee9"
+  },
+  "explorers": {
+    "testnet": "https://explorer.rebased.iota.org/?network=testnet"
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "model_dir": "./models",
+  "ensemble_weights": {
+    "transformer": 0.6,
+    "iota_specific": 0.4
+  },
+  "iota_feature_weights": {
+    "transaction_count": 0.1,
+    "message_count": 0.05,
+    "balance": 0.05,
+    "activity_regularity": 0.15,
+    "first_activity_days": 0.05,
+    "native_tokens_count": 0.05,
+    "cross_layer_transfers": 0.2,
+    "identity_verification": 0.2,
+    "wallet_balance": 0.05,
+    "collateral_ratio": 0.1,
+    "used_real_iota_data": 0.05
+  },
+  "iota_importance_factor": 0.4,
+  "identity_verification_bonus": 15,
+  "cross_layer_activity_factor": 0.2,
+  "min_iota_transactions": 5,
+  "risk_class_thresholds": [20, 40, 60, 80],
+  "network_config": {
+    "testnet": {
+      "json_rpc_url": "https://api.testnet.iota.cafe",
+      "indexer_url": "https://indexer.testnet.iota.cafe",
+      "graphql_url": "https://graphql.testnet.iota.cafe",
+      "websocket_url": "wss://api.testnet.iota.cafe",
+      "explorer_url": "https://explorer.rebased.iota.org/?network=testnet"
+    },
+    "mainnet": {
+      "json_rpc_url": "https://api.shimmer.network",
+      "indexer_url": "https://indexer.shimmer.network",
+      "graphql_url": "https://graphql.shimmer.network",
+      "websocket_url": "wss://api.shimmer.network",
+      "explorer_url": "https://explorer.shimmer.network/shimmer"
+    }
+  },
+  "contract_addresses": {
+    "lending_pool_address": "0x9A9f2CCfdE556A7E9Ff0848998Aa4a0CFD8863AE",
+    "zk_verifier_address": "0x68B1D87F95878fE05B998F19b66F4baba5De1aed",
+    "zk_bridge_address": "0x3Aa5ebB10DC797CAC828524e59A333d0A371443c",
+    "bridge_address": "0x3Aa5ebB10DC797CAC828524e59A333d0A371443c",
+    "liquidation_auction_address": "0x12Ab342bB35d6E95c8292f2f9DAd16F61cc8923B",
+    "move_lending_pool_address": "0x21feA4CeF471E7DEC974889cd7C1e23B5B4D9b6a",
+    "move_risk_bridge_address": "0x7BE486a1a5A5df9f37056179D2a1879516800ee9"
+  }
+}
