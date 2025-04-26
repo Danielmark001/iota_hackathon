@@ -14,6 +14,10 @@ import LandingPage from './pages/LandingPage';
 import NotFound from './pages/NotFound';
 import MessagingPage from './pages/MessagingPage';
 import CrossLayerPage from './pages/CrossLayerPage';
+import SwapPage from './pages/SwapPage';
+import StakingPage from './pages/StakingPage';
+import LiquidationAlertsPage from './pages/LiquidationAlertsPage';
+import TransactionHistoryPage from './pages/TransactionHistoryPage';
 import LoadingBackdrop from './components/ui/LoadingBackdrop';
 import { IoTAProvider } from './context/IoTAContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -60,6 +64,10 @@ function App() {
                       <Route path="/settings" element={<SettingsPage />} />
                       <Route path="/messaging" element={<MessagingPage />} />
                       <Route path="/cross-layer" element={<CrossLayerPage />} />
+                      <Route path="/swap" element={<SwapPage />} />
+                      <Route path="/staking" element={<StakingPage />} />
+                      <Route path="/liquidation-alerts" element={<LiquidationAlertsPage />} />
+                      <Route path="/transactions" element={<TransactionHistoryPage />} />
                       
                       {/* 404 route */}
                       <Route path="*" element={<NotFound />} />

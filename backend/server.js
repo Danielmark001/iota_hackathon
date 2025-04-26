@@ -2001,6 +2001,10 @@ app.post('/api/admin/update-risk-score', authenticate, validateRequest(['address
   }
 });
 
+// Cross-Layer Swap Routes
+const swapRoutes = require('./crosschain/swap/swapRoutes');
+app.use('/api/bridge', swapRoutes);
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   logger.error('Unhandled error:', err);

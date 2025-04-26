@@ -138,6 +138,51 @@ const apiService = {
   getLiquidationEvents: iotaService.getLiquidationEvents,
   getCrossLayerStats: iotaService.getCrossLayerStats,
   
+  // Cross-layer swap operations
+  initiateL1ToL2Transfer: async (transferData) => {
+    try {
+      const response = await api.post('/api/bridge/l1-to-l2', transferData);
+      return response.data;
+    } catch (error) {
+      console.error('Error initiating L1 to L2 transfer:', error);
+      throw error;
+    }
+  },
+  
+  initiateL2ToL1Transfer: async (transferData) => {
+    try {
+      const response = await api.post('/api/bridge/l2-to-l1', transferData);
+      return response.data;
+    } catch (error) {
+      console.error('Error initiating L2 to L1 transfer:', error);
+      throw error;
+    }
+  },
+  
+  getTransferStatus: async (transferId) => {
+    try {
+      const response = await api.get(`/api/bridge/transfer/${transferId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error getting transfer status:', error);
+      throw error;
+    }
+  },
+  
+  getGasEstimates: async () => {
+    try {
+      const response = await api.get('/api/bridge/gas-estimates');
+      return response.data;
+    } catch (error) {
+      console.error('Error getting gas estimates:', error);
+      // Return default values on error
+      return {
+        l1ToL2Gas: 0.001,
+        l2ToL1Gas: 0.005
+      };
+    }
+  },
+  
   // Simulated market assets data (since we don't have this endpoint yet)
   getMarketAssets: async () => {
     try {

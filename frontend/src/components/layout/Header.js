@@ -36,6 +36,10 @@ import {
   Close,
   Message,
   CompareArrows,
+  SwapHoriz,
+  WarningAmber,
+  StarRate,
+  HistoryToggleOff
 } from '@mui/icons-material';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -100,8 +104,12 @@ const Header = () => {
     { text: 'Identity', icon: <Fingerprint />, path: '/identity' },
     { text: 'Risk Assessment', icon: <Assessment />, path: '/risk' },
     { text: 'Portfolio', icon: <Person />, path: '/portfolio' },
+    { text: 'Transactions', icon: <HistoryToggleOff />, path: '/transactions' },
     { text: 'Messaging', icon: <Message />, path: '/messaging' },
     { text: 'Cross-Layer', icon: <CompareArrows />, path: '/cross-layer' },
+    { text: 'Layer Swap', icon: <SwapHoriz />, path: '/swap' },
+    { text: 'Staking', icon: <StarRate />, path: '/staking' },
+    { text: 'Liquidation Alerts', icon: <WarningAmber />, path: '/liquidation-alerts' },
   ];
 
   // Get network name

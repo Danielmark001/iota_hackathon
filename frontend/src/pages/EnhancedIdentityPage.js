@@ -10,13 +10,14 @@ import {
   Tab,
   Divider
 } from '@mui/material';
-import { Fingerprint, AccountBalance } from '@mui/icons-material';
+import { Fingerprint, AccountBalance, VerifiedUser } from '@mui/icons-material';
 
 // Original identity page for traditional verification
 import IdentityPage from './IdentityPage';
 
-// IOTA identity component
+// IOTA identity components
 import IotaIdentityVerifier from '../components/identity/IotaIdentityVerifier';
+import AdvancedIdentityDashboard from '../components/identity/advanced/AdvancedIdentityDashboard';
 
 // Contexts
 import { useWeb3 } from '../context/Web3Context';
@@ -153,6 +154,12 @@ const EnhancedIdentityPage = () => {
               label="IOTA Identity Verification" 
               disabled={!isIotaConnected}
             />
+            <Tab 
+              icon={<VerifiedUser />} 
+              iconPosition="start" 
+              label="Advanced Identity Management" 
+              disabled={!isIotaConnected}
+            />
           </Tabs>
         </Box>
         
@@ -180,6 +187,19 @@ const EnhancedIdentityPage = () => {
             <Alert severity="info" sx={{ mt: 2 }}>
               <Typography variant="body1">
                 Please connect your IOTA wallet to use the IOTA Identity verification method.
+              </Typography>
+            </Alert>
+          )}
+        </TabPanel>
+        
+        <TabPanel value={tabValue} index={2}>
+          {/* Advanced Identity Management Dashboard */}
+          {isIotaConnected ? (
+            <AdvancedIdentityDashboard />
+          ) : (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              <Typography variant="body1">
+                Please connect your IOTA wallet to use the Advanced Identity Management features.
               </Typography>
             </Alert>
           )}
