@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { useSnackbar } from './SnackbarContext';
+// Import IOTA dApp Kit components
+import { useWallet, useConnect, useDisconnect, useBalance } from '@iota/dapp-kit';
 
 // Create context
 const IoTAContext = createContext(null);
@@ -28,6 +30,12 @@ const NETWORKS = {
 export const IoTAProvider = ({ children }) => {
   const { showSnackbar } = useSnackbar();
   
+  // Use IOTA dApp Kit hooks
+  const { wallet, client, activeAddress, status } = useWallet();
+  const { connect } = useConnect();
+  const { disconnect } = useDisconnect();
+  const { data: walletBalance } = useBalance(activeAddress);
+  
   // State variables
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -42,12 +50,49 @@ export const IoTAProvider = ({ children }) => {
   // API endpoint - would normally be from environment variables
   const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3001';
   
-  // Initialize IOTA connection via backend API
+  // Update connection status based on wallet connection
+  useEffect(() => {
+    if (status === 'connected' && activeAddress) {
+      setIsConnected(true);
+      setAddress(activeAddress);
+      showSnackbar('Wallet connected successfully', 'success');
+    } else {
+      setIsConnected(status === 'connected');
+    }
+  }, [status, activeAddress, showSnackbar]);
+  
+  // Update balance when wallet balance changes
+  useEffect(() => {
+    if (walletBalance) {
+      const baseAmount = walletBalance.base.toString();
+      const baseAmountFormatted = 
+        Number(baseAmount) / 1_000_000 + ' ' + (network === 'mainnet' ? 'IOTA' : 'SMR');
+      
+      setBalance({
+        baseCoins: baseAmount,
+        baseCoinsFormatted: baseAmountFormatted,
+        nativeTokens: walletBalance.nativeTokens || []
+      });
+    }
+  }, [walletBalance, network]);
+  
+  // Initialize IOTA connection - supports both direct wallet and backend API
   const initConnection = useCallback(async () => {
     try {
       setIsConnecting(true);
       
-      // Check if backend is connected to IOTA
+      // First check if we can connect to a wallet directly
+      if (wallet) {
+        try {
+          await connect();
+          return; // If wallet connection succeeds, we're done
+        } catch (walletError) {
+          console.warn('Direct wallet connection failed, falling back to backend:', walletError);
+          // Continue to backend connection as fallback
+        }
+      }
+      
+      // Fallback to backend API connection
       const healthResponse = await axios.get(`${apiUrl}/health`);
       
       if (healthResponse.data?.iota?.status === 'healthy') {
@@ -65,7 +110,20 @@ export const IoTAProvider = ({ children }) => {
     } finally {
       setIsConnecting(false);
     }
-  }, [apiUrl, showSnackbar]);
+  }, [apiUrl, showSnackbar, wallet, connect]);
+  
+  // Disconnect wallet
+  const disconnectWallet = useCallback(async () => {
+    try {
+      if (status === 'connected') {
+        await disconnect();
+        showSnackbar('Wallet disconnected', 'info');
+      }
+    } catch (error) {
+      console.error('Error disconnecting wallet:', error);
+      showSnackbar('Failed to disconnect wallet', 'error');
+    }
+  }, [disconnect, status, showSnackbar]);
   
   // Initialize connection on component mount
   useEffect(() => {
@@ -126,7 +184,7 @@ export const IoTAProvider = ({ children }) => {
     }
   }, [apiUrl, address, isConnected, showSnackbar]);
   
-  // Send IOTA tokens
+  // Send IOTA tokens - supports both direct wallet and API
   const sendTokens = useCallback(async (recipientAddress, amount) => {
     try {
       if (!isConnected) {
@@ -139,6 +197,38 @@ export const IoTAProvider = ({ children }) => {
         return null;
       }
       
+      // If we have a connected wallet, use it directly
+      if (wallet && status === 'connected') {
+        try {
+          // Convert amount to base units (glow) - 1 SMR = 1,000,000 glow
+          const amountInGlow = BigInt(Math.floor(Number(amount) * 1_000_000)).toString();
+          
+          // Create the transaction
+          const transaction = {
+            address: recipientAddress,
+            amount: amountInGlow,
+            tag: 'IntelliLend'
+          };
+          
+          // Send the transaction
+          const result = await wallet.send(transaction);
+          
+          showSnackbar(`Sent ${amount} SMR successfully`, 'success');
+          return {
+            success: true,
+            blockId: result.blockId,
+            transactionId: result.transactionId,
+            amount,
+            recipient: recipientAddress
+          };
+        } catch (walletError) {
+          console.error('Wallet send error:', walletError);
+          showSnackbar(`Wallet error: ${walletError.message}`, 'error');
+          return null;
+        }
+      }
+      
+      // Fallback to API if direct wallet fails or isn't available
       // Get authentication token if using secure endpoints
       const token = localStorage.getItem('auth_token');
       
@@ -161,7 +251,7 @@ export const IoTAProvider = ({ children }) => {
       showSnackbar(error.response?.data?.message || 'Failed to send IOTA tokens', 'error');
       return null;
     }
-  }, [apiUrl, getBalance, isConnected, showSnackbar]);
+  }, [apiUrl, getBalance, isConnected, showSnackbar, wallet, status]);
   
   // Submit data to IOTA Tangle
   const submitData = useCallback(async (data, tag = 'IntelliLend') => {
@@ -219,13 +309,23 @@ export const IoTAProvider = ({ children }) => {
   
   // Value object to be provided by context
   const value = {
+    // State
     isConnected,
     isConnecting,
     network,
     networkInfo: NETWORKS[network] || NETWORKS.testnet,
     address,
     balance,
+    
+    // Wallet status from dApp Kit
+    walletStatus: status,
+    wallet,
+    client,
+    activeAddress,
+    
+    // Methods
     initConnection,
+    disconnectWallet,
     generateAddress,
     getBalance,
     sendTokens,

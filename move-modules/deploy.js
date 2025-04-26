@@ -27,8 +27,14 @@ async function main() {
   
   try {
     // Initialize IOTA client
-    const iotaClient = await createClient(NETWORK);
+    console.log(`Connecting to IOTA ${NETWORK}...`);
+    const { client, nodeManager } = await createClient(NETWORK);
     console.log('IOTA client connected successfully');
+    
+    // Get network info to confirm connection
+    const networkInfo = await client.getInfo();
+    console.log(`Connected to node: ${networkInfo.nodeInfo.name} (${networkInfo.nodeInfo.version})`);
+    console.log(`Network health: ${networkInfo.nodeInfo.status.isHealthy ? 'Healthy' : 'Unhealthy'}`);
     
     // Build the Move package
     console.log('Building Move package...');
@@ -36,7 +42,7 @@ async function main() {
     
     // Deploy the Move package
     console.log('Deploying Move package...');
-    const deployResult = deployMovePackage();
+    const deployResult = await deployMovePackage(client);
     
     // Update smart contract addresses in .env file
     console.log('Updating contract addresses in .env file...');
@@ -62,12 +68,8 @@ function buildMovePackage() {
     }
     
     // Build Move package using IOTA CLI
-    // In production, we would use real IOTA CLI commands
-    // For simulation, we'll just print what would be executed
-    console.log('Would execute: iota-cli move build --package-path', PACKAGE_PATH);
-    
-    // In a real implementation, we would execute something like:
-    // execSync(`iota-cli move build --package-path ${PACKAGE_PATH}`, { stdio: 'inherit' });
+    console.log('Executing: iota-cli move build --package-path', PACKAGE_PATH);
+    execSync(`iota-cli move build --package-path ${PACKAGE_PATH}`, { stdio: 'inherit' });
     
     return true;
   } catch (error) {
@@ -76,23 +78,71 @@ function buildMovePackage() {
   }
 }
 
-function deployMovePackage() {
+async function deployMovePackage(client) {
   try {
-    // In production, we would deploy using the IOTA CLI
-    // For simulation, we'll just return simulated contract addresses
-    console.log('Would execute: iota-cli move publish --package-path', PACKAGE_PATH);
+    console.log('Executing: iota-cli move publish --package-path', PACKAGE_PATH, `--network ${NETWORK}`);
     
-    // In a real implementation, we would execute something like:
-    // const output = execSync(`iota-cli move publish --package-path ${PACKAGE_PATH}`, { encoding: 'utf8' });
-    // And then parse the output to extract the deployed contract addresses
+    // Execute the deployment command and capture output
+    const output = execSync(`iota-cli move publish --package-path ${PACKAGE_PATH} --network ${NETWORK}`, { encoding: 'utf8' });
+    console.log("Deployment output:", output);
     
-    // Return simulated contract addresses
-    return {
-      MOVE_LENDING_POOL_ADDRESS: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
-      MOVE_RISK_BRIDGE_ADDRESS: '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890'
+    // Parse the output to extract contract addresses
+    // The format will depend on the IOTA CLI output
+    const addresses = parseAddressesFromOutput(output);
+    
+    // Create and submit block to IOTA Tangle to record the deployment
+    const blockData = {
+      payload: {
+        type: 1, // Tagged data
+        tag: Buffer.from('MOVE_DEPLOYMENT').toString('hex'),
+        data: Buffer.from(JSON.stringify({
+          network: NETWORK,
+          timestamp: new Date().toISOString(),
+          addresses
+        })).toString('hex')
+      }
     };
+    
+    // Submit the record to Tangle
+    const blockSubmission = await client.submitBlock(blockData);
+    console.log(`Deployment record submitted to Tangle: ${blockSubmission.blockId}`);
+    
+    return addresses;
   } catch (error) {
     console.error('Deployment failed:', error);
+    throw error;
+  }
+}
+
+function parseAddressesFromOutput(output) {
+  try {
+    // Real implementation would parse the IOTA CLI output format
+    // Example pattern matching for addresses (will need to be adjusted based on actual output)
+    const lendingPoolPattern = /LendingPool published at: (0x[a-fA-F0-9]+)/;
+    const riskBridgePattern = /RiskBridge published at: (0x[a-fA-F0-9]+)/;
+    
+    let addresses = {};
+    
+    // Extract LendingPool address
+    const lendingPoolMatch = output.match(lendingPoolPattern);
+    if (lendingPoolMatch && lendingPoolMatch[1]) {
+      addresses.MOVE_LENDING_POOL_ADDRESS = lendingPoolMatch[1];
+    }
+    
+    // Extract RiskBridge address
+    const riskBridgeMatch = output.match(riskBridgePattern);
+    if (riskBridgeMatch && riskBridgeMatch[1]) {
+      addresses.MOVE_RISK_BRIDGE_ADDRESS = riskBridgeMatch[1];
+    }
+    
+    // If no addresses found, throw error
+    if (Object.keys(addresses).length === 0) {
+      throw new Error('Failed to parse contract addresses from output');
+    }
+    
+    return addresses;
+  } catch (error) {
+    console.error('Error parsing deployment output:', error);
     throw error;
   }
 }

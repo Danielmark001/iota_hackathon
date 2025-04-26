@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { useIoTA } from '../../context/IoTAContext';
+import WalletConnection from '../wallet/WalletConnection';
 import {
   AppBar,
   Toolbar,
@@ -32,6 +34,8 @@ import {
   Person,
   Settings,
   Close,
+  Message,
+  CompareArrows,
 } from '@mui/icons-material';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -96,6 +100,8 @@ const Header = () => {
     { text: 'Identity', icon: <Fingerprint />, path: '/identity' },
     { text: 'Risk Assessment', icon: <Assessment />, path: '/risk' },
     { text: 'Portfolio', icon: <Person />, path: '/portfolio' },
+    { text: 'Messaging', icon: <Message />, path: '/messaging' },
+    { text: 'Cross-Layer', icon: <CompareArrows />, path: '/cross-layer' },
   ];
 
   // Get network name
@@ -213,7 +219,12 @@ const Header = () => {
             />
           )}
 
-          {/* Connect wallet or user menu */}
+          {/* IOTA Wallet Connection */}
+          <Box sx={{ mr: 2 }}>
+            <WalletConnection />
+          </Box>
+
+          {/* Connect EVM wallet or user menu */}
           {isAuthenticated ? (
             <>
               <Tooltip title="Account">
@@ -291,7 +302,7 @@ const Header = () => {
               onClick={login}
               disabled={isConnecting}
             >
-              {isConnecting ? 'Connecting...' : 'Connect Wallet'}
+              {isConnecting ? 'Connecting...' : 'Connect EVM Wallet'}
             </Button>
           )}
         </Toolbar>

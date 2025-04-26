@@ -331,7 +331,40 @@ async function initializeWithVerification() {
 
 // Initialize IOTA SDK with robust retry and fallback
 withExponentialBackoff(async () => {
-  await initializeWithVerification();
+  const iotaComponents = await initializeWithVerification();
+  
+  // Set global variables with IOTA components if available
+  if (iotaComponents) {
+    iotaClient = iotaComponents.client;
+    iotaNodeManager = iotaComponents.nodeManager;
+    iotaWallet = iotaComponents.wallet;
+    iotaAccount = iotaComponents.account;
+    iotaIdentityService = iotaComponents.identityService;
+    iotaStreamsService = iotaComponents.streamsService;
+    iotaCrossLayerAggregator = iotaComponents.crossLayerAggregator;
+    liquidationService = iotaComponents.liquidationService;
+    crossLayerMonitor = iotaComponents.crossLayerMonitor;
+    
+    // Initialize IOTA Identity Bridge if not available
+    if (!iotaIdentityBridge && iotaClient && iotaIdentityService) {
+      logger.info('Initializing IOTA Identity Bridge...');
+      try {
+        const { createIdentityBridge } = require('../iota-sdk/identity-bridge');
+        iotaIdentityBridge = await createIdentityBridge(process.env.IOTA_NETWORK || 'testnet', {
+          evmRpcUrl: process.env.IOTA_EVM_RPC_URL,
+          walletOptions: {
+            accountName: 'IdentityBridge',
+            strongholdPassword: process.env.STRONGHOLD_PASSWORD
+          }
+        });
+        logger.info('IOTA Identity Bridge initialized successfully');
+      } catch (bridgeError) {
+        logger.error(`Failed to initialize IOTA Identity Bridge: ${bridgeError.message}`);
+      }
+    }
+    
+    logger.info('IOTA components initialized successfully');
+  }
 }, {
   maxRetries: 7,
   initialDelayMs: 2000,

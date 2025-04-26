@@ -1,4 +1,5 @@
 import axios from 'axios';
+import iotaService from './iotaService';
 
 // Create axios instance with base URL and default configs
 const api = axios.create({
@@ -101,51 +102,41 @@ const apiService = {
     }
   },
   
-  // IOTA specific endpoints
+  // IOTA specific endpoints - using iotaService
   
-  // Generate IOTA address
-  generateIotaAddress: async () => {
-    try {
-      const response = await api.get('/api/iota/address');
-      return response.data;
-    } catch (error) {
-      console.error('Error generating IOTA address:', error);
-      throw error;
-    }
-  },
+  // Health
+  checkIotaHealth: iotaService.checkHealth,
   
-  // Get IOTA balance for an address
-  getIotaBalance: async (address) => {
-    try {
-      const response = await api.get(`/api/iota/balance/${address}`);
-      return response.data;
-    } catch (error) {
-      console.error('Error fetching IOTA balance:', error);
-      throw error;
-    }
-  },
+  // Wallet operations
+  generateIotaAddress: iotaService.generateAddress,
+  getIotaBalance: iotaService.getBalance,
+  sendIotaTokens: iotaService.sendTokens,
+  submitIotaData: iotaService.submitData,
+  getIotaNetworkInfo: iotaService.getNetworkInfo,
+  getIotaTransactions: iotaService.getTransactions,
+  checkTransactionStatus: iotaService.checkTransactionStatus,
   
-  // Send IOTA tokens
-  sendIotaTokens: async (recipientAddress, amount) => {
-    try {
-      const response = await api.post('/api/iota/send', { address: recipientAddress, amount });
-      return response.data;
-    } catch (error) {
-      console.error('Error sending IOTA tokens:', error);
-      throw error;
-    }
-  },
+  // Identity operations
+  createIdentity: iotaService.createIdentity,
+  createCredential: iotaService.createCredential,
+  verifyIdentity: iotaService.verifyIdentity,
   
-  // Submit data to IOTA Tangle
-  submitIotaData: async (data, tag = 'IntelliLend') => {
-    try {
-      const response = await api.post('/api/iota/submit', { data, tag });
-      return response.data;
-    } catch (error) {
-      console.error('Error submitting data to IOTA Tangle:', error);
-      throw error;
-    }
-  },
+  // Streams operations
+  createChannel: iotaService.createChannel,
+  joinChannel: iotaService.joinChannel,
+  getUserChannels: iotaService.getUserChannels,
+  getChannelMessages: iotaService.getChannelMessages,
+  sendMessage: iotaService.sendMessage,
+  sendFile: iotaService.sendFile,
+  
+  // Cross-layer operations
+  sendCrossLayerMessage: iotaService.sendCrossLayerMessage,
+  checkCrossLayerMessageStatus: iotaService.checkCrossLayerMessageStatus,
+  getCrossLayerMessages: iotaService.getCrossLayerMessages,
+  getCrossLayerTransactions: iotaService.getCrossLayerTransactions,
+  getBridgeMessages: iotaService.getBridgeMessages,
+  getLiquidationEvents: iotaService.getLiquidationEvents,
+  getCrossLayerStats: iotaService.getCrossLayerStats,
   
   // Simulated market assets data (since we don't have this endpoint yet)
   getMarketAssets: async () => {

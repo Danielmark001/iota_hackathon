@@ -9,7 +9,7 @@
     "test:iota:client": "cd test && npm run test:client",
     "test:iota:wallet": "cd test && npm run test:wallet",
     "test:iota:identity": "cd test && npm run test:identity",
-    "test:iota:streams": "cd test && npm run test:streams", 
+    "test:iota:streams": "cd test && npm run test:streams",
     "test:iota:performance": "cd test && npm run test:performance",
     "server": "node backend/server.js",
     "frontend": "cd frontend && npm start",
@@ -28,6 +28,7 @@
   "dependencies": {
     "@chainlink/contracts": "^0.5.1",
     "@iota/crypto.js": "^1.8.6",
+    "@iota/dapp-kit": "^0.4.1",
     "@iota/identity-wasm": "^1.5.1",
     "@iota/sdk": "^1.1.5",
     "@openzeppelin/contracts": "^4.8.0",

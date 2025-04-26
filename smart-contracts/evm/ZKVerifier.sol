@@ -5,6 +5,19 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
+// Interface to IOTA Identity Bridge
+interface IIOTAIdentityBridge {
+    function verifyDID(bytes32 did, bytes calldata proof) external view returns (bool);
+    function getVerificationMethod(bytes32 did, bytes32 methodId) external view returns (bytes memory);
+    function resolveCredential(bytes32 credentialId) external view returns (bytes memory);
+}
+
+// Interface to the lending pool
+interface ILendingPool {
+    function riskScores(address user) external view returns (uint256);
+    function updateRiskScore(address user, uint256 score) external;
+}
+
 /**
  * @title IntelliLend Zero-Knowledge Verifier
  * @dev Contract to verify zero-knowledge proofs for privacy-preserving credit scoring
@@ -14,6 +27,9 @@ contract ZKVerifier is Ownable, ReentrancyGuard {
 
     // Interface to the lending pool
     ILendingPool public lendingPool;
+    
+    // Interface to IOTA Identity Bridge
+    IIOTAIdentityBridge public iotaIdentityBridge;
     
     // Supported verification schemes
     enum VerificationScheme {
@@ -38,6 +54,9 @@ contract ZKVerifier is Ownable, ReentrancyGuard {
     
     // User => Proof type => Timestamp of verification
     mapping(address => mapping(bytes32 => uint256)) public verificationTimestamps;
+    
+    // User => DID mapping
+    mapping(address => bytes32) public userDIDs;
     
     // Trusted oracles that can verify proofs off-chain
     mapping(address => bool) public trustedOracles;
@@ -98,6 +117,12 @@ contract ZKVerifier is Ownable, ReentrancyGuard {
         uint256 timestamp
     );
     
+    event DIDRegistered(
+        address indexed user,
+        bytes32 did,
+        uint256 timestamp
+    );
+    
     // Errors
     error InvalidProof();
     error ProofTypeNotSupported();
@@ -110,9 +135,11 @@ contract ZKVerifier is Ownable, ReentrancyGuard {
     /**
      * @dev Constructor to initialize the ZK verifier
      * @param _lendingPoolAddress Address of the lending pool contract
+     * @param _iotaIdentityBridge Address of the IOTA Identity Bridge
      */
-    constructor(address _lendingPoolAddress) {
+    constructor(address _lendingPoolAddress, address _iotaIdentityBridge) {
         lendingPool = ILendingPool(_lendingPoolAddress);
+        iotaIdentityBridge = IIOTAIdentityBridge(_iotaIdentityBridge);
         
         // Add self as trusted oracle for development (remove in production)
         trustedOracles[msg.sender] = true;
@@ -217,7 +244,35 @@ contract ZKVerifier is Ownable, ReentrancyGuard {
     }
     
     /**
-     * @dev Verify a zero-knowledge proof on-chain
+     * @dev Register a DID for a user
+     * @param user User address
+     * @param did Decentralized Identifier (DID)
+     * @param proof Proof of DID ownership
+     * @return success Whether registration was successful
+     */
+    function registerDID(
+        address user,
+        bytes32 did,
+        bytes calldata proof
+    ) external nonReentrant returns (bool success) {
+        // Ensure only the user themselves or a trusted oracle can register
+        require(msg.sender == user || trustedOracles[msg.sender], "Unauthorized");
+        
+        // Verify DID using IOTA Identity Bridge
+        bool verificationResult = iotaIdentityBridge.verifyDID(did, proof);
+        require(verificationResult, "DID verification failed");
+        
+        // Register DID for user
+        userDIDs[user] = did;
+        
+        // Emit event
+        emit DIDRegistered(user, did, block.timestamp);
+        
+        return true;
+    }
+    
+    /**
+     * @dev Verify a zero-knowledge proof on-chain using IOTA
      * @param proofType Type of proof
      * @param proof The ZK proof bytes
      * @param publicInputs Public inputs to the proof
@@ -259,6 +314,42 @@ contract ZKVerifier is Ownable, ReentrancyGuard {
         emit ProofVerified(user, proofType, success, block.timestamp);
         
         return success;
+    }
+    
+    /**
+     * @dev Verify a proof via IOTA Identity (DID-based verification)
+     * @param proofType Type of proof
+     * @param user User address
+     * @param proof DID-signed proof
+     * @return success Whether verification was successful
+     */
+    function verifyProofViaDID(
+        bytes32 proofType,
+        address user,
+        bytes calldata proof
+    ) external nonReentrant returns (bool success) {
+        // Check if proof type is supported and active
+        if (verificationKeys[proofType].key.length == 0 || !verificationKeys[proofType].active) 
+            revert ProofTypeNotSupported();
+        
+        // Get user's DID
+        bytes32 did = userDIDs[user];
+        require(did != bytes32(0), "User has no registered DID");
+        
+        // Verify proof using IOTA Identity Bridge
+        bool verificationResult = iotaIdentityBridge.verifyDID(did, proof);
+        require(verificationResult, "DID verification failed");
+        
+        // Update verification status
+        verifiedProofs[user][proofType] = true;
+        verificationTimestamps[user][proofType] = block.timestamp;
+        
+        // Update risk score in lending pool based on proof type
+        updateUserRiskScore(user, proofType);
+        
+        emit ProofVerified(user, proofType, true, block.timestamp);
+        
+        return true;
     }
     
     /**
@@ -305,44 +396,38 @@ contract ZKVerifier is Ownable, ReentrancyGuard {
     }
     
     /**
-     * @dev Register identity verification from a trusted identity service
+     * @dev Register identity verification from IOTA Identity service
      * @param serviceId Service identifier
      * @param user User address
+     * @param did User's DID
      * @param verificationLevel Verification level achieved
-     * @param expirationTime When the verification expires (timestamp)
-     * @param signature Service signature
+     * @param credential Verifiable credential from IOTA Identity
      * @return success Whether registration was successful
      */
     function registerIdentityVerification(
         bytes32 serviceId,
         address user,
+        bytes32 did,
         uint8 verificationLevel,
-        uint256 expirationTime,
-        bytes calldata signature
+        bytes calldata credential
     ) external nonReentrant returns (bool success) {
         // Check if service exists and is active
         IdentityService storage service = identityServices[serviceId];
         if (service.serviceAddress == address(0) || !service.active) 
             revert IdentityServiceNotFound();
         
-        // Check expiration time
-        if (expirationTime < block.timestamp) revert ProofExpired();
+        // Verify that the DID matches the registered one for the user
+        require(userDIDs[user] == did || userDIDs[user] == bytes32(0), "DID mismatch");
         
-        // Create message hash that the service signed
-        bytes32 messageHash = keccak256(abi.encode(
-            serviceId,
-            user,
-            verificationLevel,
-            expirationTime,
-            block.chainid
-        ));
+        // If user has no DID yet, register this one
+        if (userDIDs[user] == bytes32(0)) {
+            userDIDs[user] = did;
+            emit DIDRegistered(user, did, block.timestamp);
+        }
         
-        // Recover signer from signature
-        bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
-        address signer = ethSignedMessageHash.recover(signature);
-        
-        // Check if signer is the trusted service
-        if (signer != service.serviceAddress) revert Unauthorized();
+        // Verify the credential using IOTA Identity Bridge
+        bytes memory resolvedCredential = iotaIdentityBridge.resolveCredential(bytes32(uint256(keccak256(credential))));
+        require(resolvedCredential.length > 0, "Invalid credential");
         
         // Update verification level
         identityVerificationLevels[user][serviceId] = verificationLevel;
@@ -374,6 +459,15 @@ contract ZKVerifier is Ownable, ReentrancyGuard {
      */
     function getIdentityVerificationLevel(bytes32 serviceId, address user) external view returns (uint8) {
         return identityVerificationLevels[user][serviceId];
+    }
+    
+    /**
+     * @dev Get user's DID
+     * @param user User address
+     * @return did The user's DID
+     */
+    function getUserDID(address user) external view returns (bytes32) {
+        return userDIDs[user];
     }
     
     /**
@@ -580,7 +674,7 @@ contract ZKVerifier is Ownable, ReentrancyGuard {
             }
         }
         
-        // Special case for specific high-trust identity services
+        // Special case for IOTA Identity Framework
         if (serviceId == keccak256("IOTA_IDENTITY_FRAMEWORK") && verificationLevel >= 2) {
             if (currentScore > 25) {
                 lendingPool.updateRiskScore(user, currentScore - 25);
@@ -589,12 +683,4 @@ contract ZKVerifier is Ownable, ReentrancyGuard {
             }
         }
     }
-}
-
-/**
- * @dev Interface for the LendingPool
- */
-interface ILendingPool {
-    function riskScores(address user) external view returns (uint256);
-    function updateRiskScore(address user, uint256 score) external;
 }

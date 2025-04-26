@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 /**
  * @title CrossLayerBridge
@@ -11,6 +12,8 @@ import "@openzeppelin/contracts/security/Pausable.sol";
  * @notice Facilitates cross-layer messaging and asset transfers
  */
 contract CrossLayerBridge is Ownable, ReentrancyGuard, Pausable {
+    using ECDSA for bytes32;
+    
     // Events
     event MessageSentToL1(
         bytes32 indexed messageId,
@@ -45,6 +48,14 @@ contract CrossLayerBridge is Ownable, ReentrancyGuard, Pausable {
     event OracleAdded(address indexed oracle, uint256 timestamp);
     event OracleRemoved(address indexed oracle, uint256 timestamp);
     
+    // Struct to track message verification status against L1
+    struct MessageVerification {
+        bytes32 messageId;
+        bytes32 tangleBlockId; // Block ID on the Tangle where this message is stored
+        bool verified;         // Whether this message is verified on L1
+        uint256 verificationTimestamp;
+    }
+    
     // Message structure
     struct Message {
         bytes32 messageId;
@@ -54,6 +65,7 @@ contract CrossLayerBridge is Ownable, ReentrancyGuard, Pausable {
         bytes payload;
         uint256 timestamp;
         bool processed;
+        MessageVerification verification;
     }
     
     // Asset transfer structure
@@ -65,6 +77,7 @@ contract CrossLayerBridge is Ownable, ReentrancyGuard, Pausable {
         uint256 amount;
         uint256 timestamp;
         bool processed;
+        MessageVerification verification;
     }
     
     // Oracles authorized to relay messages from L1
@@ -87,17 +100,37 @@ contract CrossLayerBridge is Ownable, ReentrancyGuard, Pausable {
     uint256 public totalTransfersSent;
     uint256 public totalTransfersReceived;
     
+    // IOTA L1 configuration
+    string public iotaNetwork;
+    bytes32 public iotaNodeId;
+    uint256 public l1ConfirmationBlocks; // Number of blocks required for L1 confirmation
+    
     /**
      * @dev Constructor to initialize the bridge
      * @param initialOracles Initial list of authorized oracles
+     * @param _iotaNetwork IOTA network name (e.g., "mainnet", "testnet")
+     * @param _l1ConfirmationBlocks Number of blocks required for L1 confirmation
      */
-    constructor(address[] memory initialOracles) {
+    constructor(
+        address[] memory initialOracles,
+        string memory _iotaNetwork,
+        uint256 _l1ConfirmationBlocks
+    ) {
+        // Initialize oracles
         for (uint256 i = 0; i < initialOracles.length; i++) {
             _addOracle(initialOracles[i]);
         }
         
+        // Initialize nonces
         nextMessageNonce = 1;
         nextTransferNonce = 1;
+        
+        // Set IOTA configuration
+        iotaNetwork = _iotaNetwork;
+        l1ConfirmationBlocks = _l1ConfirmationBlocks > 0 ? _l1ConfirmationBlocks : 10;
+        
+        // Generate a random node ID for this bridge instance
+        iotaNodeId = keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender));
     }
     
     /**
@@ -140,7 +173,13 @@ contract CrossLayerBridge is Ownable, ReentrancyGuard, Pausable {
             messageType: messageType,
             payload: payload,
             timestamp: block.timestamp,
-            processed: false
+            processed: false,
+            verification: MessageVerification({
+                messageId: messageId,
+                tangleBlockId: bytes32(0),
+                verified: false,
+                verificationTimestamp: 0
+            })
         });
         
         totalMessagesSent++;
@@ -152,12 +191,57 @@ contract CrossLayerBridge is Ownable, ReentrancyGuard, Pausable {
     }
     
     /**
+     * @dev Update a sent message with its Tangle block ID
+     * @param messageId ID of the message
+     * @param tangleBlockId Tangle block ID where the message was stored
+     * @return success Whether the update was successful
+     */
+    function updateMessageTangleBlock(
+        bytes32 messageId,
+        bytes32 tangleBlockId
+    ) external onlyOracle returns (bool success) {
+        require(messageId != bytes32(0), "Invalid message ID");
+        require(tangleBlockId != bytes32(0), "Invalid Tangle block ID");
+        
+        Message storage message = sentMessages[messageId];
+        require(message.messageId == messageId, "Message not found");
+        
+        // Update Tangle block ID
+        message.verification.tangleBlockId = tangleBlockId;
+        
+        return true;
+    }
+    
+    /**
+     * @dev Mark a sent message as verified on L1
+     * @param messageId ID of the message
+     * @param verified Whether the message was verified
+     * @return success Whether the update was successful
+     */
+    function markMessageVerified(
+        bytes32 messageId,
+        bool verified
+    ) external onlyOracle returns (bool success) {
+        require(messageId != bytes32(0), "Invalid message ID");
+        
+        Message storage message = sentMessages[messageId];
+        require(message.messageId == messageId, "Message not found");
+        
+        // Update verification status
+        message.verification.verified = verified;
+        message.verification.verificationTimestamp = block.timestamp;
+        
+        return true;
+    }
+    
+    /**
      * @dev Receive a message from Layer 1 (only callable by oracles)
      * @param messageId ID of the message
      * @param sender Sender address on L1 (as bytes32)
      * @param targetAddress Recipient address on L2
      * @param messageType Type of message
      * @param payload Message data
+     * @param tangleBlockId Tangle block ID where the message is stored
      * @return success Whether the message was successfully received
      */
     function receiveMessageFromL1(
@@ -165,7 +249,8 @@ contract CrossLayerBridge is Ownable, ReentrancyGuard, Pausable {
         bytes32 sender,
         address targetAddress,
         string calldata messageType,
-        bytes calldata payload
+        bytes calldata payload,
+        bytes32 tangleBlockId
     ) external onlyOracle nonReentrant whenNotPaused returns (bool success) {
         require(messageId != bytes32(0), "Invalid message ID");
         require(targetAddress != address(0), "Invalid target address");
@@ -179,7 +264,13 @@ contract CrossLayerBridge is Ownable, ReentrancyGuard, Pausable {
             messageType: messageType,
             payload: payload,
             timestamp: block.timestamp,
-            processed: false
+            processed: false,
+            verification: MessageVerification({
+                messageId: messageId,
+                tangleBlockId: tangleBlockId,
+                verified: true, // Messages from L1 are considered verified
+                verificationTimestamp: block.timestamp
+            })
         });
         
         totalMessagesReceived++;
@@ -211,9 +302,6 @@ contract CrossLayerBridge is Ownable, ReentrancyGuard, Pausable {
         // Mark the message as processed
         receivedMessages[messageId].processed = true;
         
-        // In a real implementation, this would dispatch to appropriate handlers
-        // For the hackathon, we're keeping it simple
-        
         // If the target is a contract, try to forward the message
         if (targetAddress != address(this) && targetAddress.code.length > 0) {
             // Forward to target contract via low-level call
@@ -227,9 +315,8 @@ contract CrossLayerBridge is Ownable, ReentrancyGuard, Pausable {
                 )
             );
             
-            // Note: In a production system, we'd handle failures better
+            // If forwarding fails, mark as unprocessed
             if (!success) {
-                // For now, just mark as unprocessed if forwarding fails
                 receivedMessages[messageId].processed = false;
             }
         }
@@ -253,6 +340,10 @@ contract CrossLayerBridge is Ownable, ReentrancyGuard, Pausable {
         // For native ETH transfers
         if (keccak256(abi.encodePacked(assetType)) == keccak256(abi.encodePacked("ETH"))) {
             require(msg.value == amount, "Incorrect ETH amount sent");
+        } else if (keccak256(abi.encodePacked(assetType)) == keccak256(abi.encodePacked("IOTA"))) {
+            // For IOTA token transfers, we'd handle ERC20 transfers here
+            // This is a simplified implementation
+            revert("IOTA token transfers not implemented yet");
         }
         
         // Generate transfer ID
@@ -271,7 +362,13 @@ contract CrossLayerBridge is Ownable, ReentrancyGuard, Pausable {
             assetType: assetType,
             amount: amount,
             timestamp: block.timestamp,
-            processed: false
+            processed: false,
+            verification: MessageVerification({
+                messageId: transferId,
+                tangleBlockId: bytes32(0),
+                verified: false,
+                verificationTimestamp: 0
+            })
         });
         
         totalTransfersSent++;
@@ -283,12 +380,57 @@ contract CrossLayerBridge is Ownable, ReentrancyGuard, Pausable {
     }
     
     /**
+     * @dev Update a sent transfer with its Tangle block ID
+     * @param transferId ID of the transfer
+     * @param tangleBlockId Tangle block ID where the transfer was stored
+     * @return success Whether the update was successful
+     */
+    function updateTransferTangleBlock(
+        bytes32 transferId,
+        bytes32 tangleBlockId
+    ) external onlyOracle returns (bool success) {
+        require(transferId != bytes32(0), "Invalid transfer ID");
+        require(tangleBlockId != bytes32(0), "Invalid Tangle block ID");
+        
+        AssetTransfer storage transfer = sentTransfers[transferId];
+        require(transfer.transferId == transferId, "Transfer not found");
+        
+        // Update Tangle block ID
+        transfer.verification.tangleBlockId = tangleBlockId;
+        
+        return true;
+    }
+    
+    /**
+     * @dev Mark a sent transfer as verified on L1
+     * @param transferId ID of the transfer
+     * @param verified Whether the transfer was verified
+     * @return success Whether the update was successful
+     */
+    function markTransferVerified(
+        bytes32 transferId,
+        bool verified
+    ) external onlyOracle returns (bool success) {
+        require(transferId != bytes32(0), "Invalid transfer ID");
+        
+        AssetTransfer storage transfer = sentTransfers[transferId];
+        require(transfer.transferId == transferId, "Transfer not found");
+        
+        // Update verification status
+        transfer.verification.verified = verified;
+        transfer.verification.verificationTimestamp = block.timestamp;
+        
+        return true;
+    }
+    
+    /**
      * @dev Receive an asset transfer from Layer 1 (only callable by oracles)
      * @param transferId ID of the transfer
      * @param sender Sender address on L1 (as bytes32)
      * @param recipient Recipient address on L2
      * @param assetType Type of asset
      * @param amount Amount transferred
+     * @param tangleBlockId Tangle block ID where the transfer is stored
      * @return success Whether the transfer was successfully received
      */
     function receiveAssetFromL1(
@@ -296,7 +438,8 @@ contract CrossLayerBridge is Ownable, ReentrancyGuard, Pausable {
         bytes32 sender,
         address recipient,
         string calldata assetType,
-        uint256 amount
+        uint256 amount,
+        bytes32 tangleBlockId
     ) external onlyOracle nonReentrant whenNotPaused returns (bool success) {
         require(transferId != bytes32(0), "Invalid transfer ID");
         require(recipient != address(0), "Invalid recipient");
@@ -311,7 +454,13 @@ contract CrossLayerBridge is Ownable, ReentrancyGuard, Pausable {
             assetType: assetType,
             amount: amount,
             timestamp: block.timestamp,
-            processed: false
+            processed: false,
+            verification: MessageVerification({
+                messageId: transferId,
+                tangleBlockId: tangleBlockId,
+                verified: true, // Transfers from L1 are considered verified
+                verificationTimestamp: block.timestamp
+            })
         });
         
         totalTransfersReceived++;
@@ -352,10 +501,11 @@ contract CrossLayerBridge is Ownable, ReentrancyGuard, Pausable {
                 // Mark as unprocessed if forwarding fails
                 receivedTransfers[transferId].processed = false;
             }
+        } else if (keccak256(abi.encodePacked(assetType)) == keccak256(abi.encodePacked("IOTA"))) {
+            // For IOTA token transfers, we'd mint an ERC20 token here
+            // This is a simplified implementation
+            receivedTransfers[transferId].processed = false;
         }
-        
-        // For other tokens, the implementation would mint or transfer them to the recipient
-        // This would depend on the specific asset type and tokenization approach
     }
     
     /**
@@ -417,13 +567,17 @@ contract CrossLayerBridge is Ownable, ReentrancyGuard, Pausable {
      * @return messageType Message type
      * @return timestamp When the message was sent
      * @return processed Whether the message has been processed
+     * @return verified Whether the message has been verified on L1
+     * @return tangleBlockId Tangle block ID where the message is stored
      */
     function getSentMessageDetails(bytes32 messageId) external view returns (
         address sender,
         bytes32 targetAddress,
         string memory messageType,
         uint256 timestamp,
-        bool processed
+        bool processed,
+        bool verified,
+        bytes32 tangleBlockId
     ) {
         Message memory message = sentMessages[messageId];
         return (
@@ -431,7 +585,9 @@ contract CrossLayerBridge is Ownable, ReentrancyGuard, Pausable {
             message.targetAddress,
             message.messageType,
             message.timestamp,
-            message.processed
+            message.processed,
+            message.verification.verified,
+            message.verification.tangleBlockId
         );
     }
     
@@ -443,13 +599,15 @@ contract CrossLayerBridge is Ownable, ReentrancyGuard, Pausable {
      * @return messageType Message type
      * @return timestamp When the message was received
      * @return processed Whether the message has been processed
+     * @return tangleBlockId Tangle block ID where the message is stored
      */
     function getReceivedMessageDetails(bytes32 messageId) external view returns (
         address sender,
         bytes32 targetAddress,
         string memory messageType,
         uint256 timestamp,
-        bool processed
+        bool processed,
+        bytes32 tangleBlockId
     ) {
         Message memory message = receivedMessages[messageId];
         return (
@@ -457,8 +615,22 @@ contract CrossLayerBridge is Ownable, ReentrancyGuard, Pausable {
             message.targetAddress,
             message.messageType,
             message.timestamp,
-            message.processed
+            message.processed,
+            message.verification.tangleBlockId
         );
+    }
+    
+    /**
+     * @dev Update IOTA network configuration (only callable by owner)
+     * @param _iotaNetwork IOTA network name
+     * @param _l1ConfirmationBlocks Number of blocks required for L1 confirmation
+     */
+    function updateIotaConfig(
+        string calldata _iotaNetwork,
+        uint256 _l1ConfirmationBlocks
+    ) external onlyOwner {
+        iotaNetwork = _iotaNetwork;
+        l1ConfirmationBlocks = _l1ConfirmationBlocks > 0 ? _l1ConfirmationBlocks : 10;
     }
     
     /**
