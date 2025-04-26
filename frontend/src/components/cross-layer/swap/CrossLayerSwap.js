@@ -17,7 +17,8 @@ import {
   Divider,
   IconButton,
   Tooltip,
-  Link
+  Link,
+  Chip
 } from '@mui/material';
 import {
   SwapHoriz,
@@ -27,7 +28,9 @@ import {
   InfoOutlined,
   Refresh,
   ContentCopy,
-  OpenInNew
+  OpenInNew,
+  Error,
+  Warning
 } from '@mui/icons-material';
 
 // Contexts
@@ -49,9 +52,12 @@ const CrossLayerSwap = () => {
   const { 
     isConnected: isIotaConnected, 
     address: iotaAddress, 
-    balance: iotaBalance, 
-    sendTransaction: sendIotaTransaction,
-    connectWallet: connectIotaWallet
+    balance: iotaBalance,
+    network,
+    networkInfo,
+    getTransactionExplorerUrl,
+    sendTokens: sendIotaTransaction,
+    initConnection: connectIotaWallet
   } = useIoTA();
   
   const { 
@@ -75,6 +81,7 @@ const CrossLayerSwap = () => {
   const [estimatedTime, setEstimatedTime] = useState('2-5 minutes');
   const [error, setError] = useState('');
   const [transferStatus, setTransferStatus] = useState('idle'); // idle, pending, success, failed
+  const [processingDetails, setProcessingDetails] = useState([]);
   
   // Steps for the swap process
   const steps = [
@@ -91,11 +98,19 @@ const CrossLayerSwap = () => {
   // Fetch estimated gas and confirmation time
   const fetchGasEstimates = async () => {
     try {
+      setError('');
+      
+      // Make API call to get gas estimates
       const response = await apiService.getGasEstimates();
       setEstimatedGas(swapDirection === 'L1ToL2' ? response.l1ToL2Gas : response.l2ToL1Gas);
       setEstimatedTime(swapDirection === 'L1ToL2' ? '2-5 minutes' : '5-10 minutes');
     } catch (error) {
       console.error('Error fetching gas estimates:', error);
+      setError('Could not fetch gas estimates. Using default values.');
+      
+      // Set default values
+      setEstimatedGas(swapDirection === 'L1ToL2' ? 0.001 : 0.005);
+      setEstimatedTime(swapDirection === 'L1ToL2' ? '2-5 minutes' : '5-10 minutes');
     }
   };
   
@@ -122,6 +137,8 @@ const CrossLayerSwap = () => {
     setTxHash('');
     setTransferStatus('idle');
     setError('');
+    setAmount('');
+    setProcessingDetails([]);
   };
   
   // Handle amount change
@@ -137,13 +154,22 @@ const CrossLayerSwap = () => {
   const handleMaxAmount = () => {
     if (swapDirection === 'L1ToL2' && iotaBalance) {
       // Set max to 99% of balance to account for gas (for IOTA L1)
-      const maxAmount = Math.max(0, iotaBalance.available * 0.99).toFixed(6);
+      const available = parseFloat(iotaBalance.baseCoins) / 1_000_000;
+      const maxAmount = Math.max(0, available * 0.99).toFixed(6);
       setAmount(maxAmount);
     } else if (swapDirection === 'L2ToL1' && evmBalance) {
       // Set max to 99% of balance to account for gas (for EVM L2)
       const maxAmount = Math.max(0, evmBalance * 0.99).toFixed(6);
       setAmount(maxAmount);
     }
+  };
+  
+  // Add processing detail for status updates
+  const addProcessingDetail = (message, status = 'info') => {
+    setProcessingDetails(prev => [
+      { message, status, timestamp: new Date().toISOString() },
+      ...prev
+    ]);
   };
   
   // Handle swap button click
@@ -159,14 +185,18 @@ const CrossLayerSwap = () => {
       return;
     }
     
-    // Check sufficient balance
-    if (swapDirection === 'L1ToL2' && (parseFloat(amount) > iotaBalance?.available)) {
-      setError('Insufficient IOTA balance');
-      return;
+    // Check sufficient balance for L1 -> L2
+    if (swapDirection === 'L1ToL2') {
+      const available = parseFloat(iotaBalance.baseCoins) / 1_000_000;
+      if (parseFloat(amount) > available) {
+        setError(`Insufficient IOTA balance. Available: ${available.toFixed(6)} SMR`);
+        return;
+      }
     }
     
+    // Check sufficient balance for L2 -> L1
     if (swapDirection === 'L2ToL1' && (parseFloat(amount) > evmBalance)) {
-      setError('Insufficient EVM balance');
+      setError(`Insufficient EVM balance. Available: ${evmBalance.toFixed(6)} SMR`);
       return;
     }
     
@@ -174,53 +204,126 @@ const CrossLayerSwap = () => {
     setError('');
     setActiveStep(1);
     setTransferStatus('pending');
+    setProcessingDetails([]);
     
     try {
       let txResult;
       
       if (swapDirection === 'L1ToL2') {
+        // L1 to L2 transfer
+        addProcessingDetail('Initiating Layer 1 to Layer 2 transfer');
+        
         // Call the bridge API to transfer from L1 to L2
-        txResult = await apiService.initiateL1ToL2Transfer({
-          fromAddress: iotaAddress,
-          toAddress: currentAccount || '', // If EVM wallet not connected, transfer to same user on L2
-          amount: parseFloat(amount),
-          timestamp: Date.now()
-        });
+        try {
+          // Get the destination address (EVM wallet)
+          const toAddress = currentAccount || '';
+          if (!toAddress) {
+            addProcessingDetail('No EVM wallet detected. Will use same user identifier on L2.', 'warning');
+          } else {
+            addProcessingDetail(`Target EVM address: ${toAddress}`);
+          }
+          
+          txResult = await apiService.initiateL1ToL2Transfer({
+            fromAddress: iotaAddress,
+            toAddress: toAddress,
+            amount: parseFloat(amount),
+            timestamp: Date.now()
+          });
+          
+          addProcessingDetail(`Bridge initialized with transfer ID: ${txResult.transferId}`);
+          addProcessingDetail(`Bridge address: ${txResult.bridgeAddress}`);
+        } catch (bridgeError) {
+          console.error('Bridge initialization error:', bridgeError);
+          addProcessingDetail(`Bridge initialization error: ${bridgeError.message}`, 'error');
+          throw new Error(`Bridge error: ${bridgeError.message}`);
+        }
         
         // Confirm with IOTA wallet
         if (isIotaConnected) {
-          const iotaTx = await sendIotaTransaction({
-            recipient: txResult.bridgeAddress,
-            amount: parseFloat(amount),
-            reference: txResult.transferId
-          });
-          
-          setTxHash(iotaTx.blockId);
-          
-          // Start polling for confirmation
-          pollForConfirmation(txResult.transferId, 'L1ToL2');
+          try {
+            addProcessingDetail('Sending transaction from IOTA wallet...');
+            
+            const iotaTx = await sendIotaTransaction(
+              txResult.bridgeAddress,
+              parseFloat(amount),
+              { tag: txResult.transferId }
+            );
+            
+            setTxHash(iotaTx.blockId);
+            addProcessingDetail(`Transaction sent! Block ID: ${iotaTx.blockId}`, 'success');
+            
+            // Generate explorer link
+            const explorerUrl = getTransactionExplorerUrl(iotaTx.blockId);
+            addProcessingDetail(`View on Explorer: ${explorerUrl}`);
+            
+            // Start polling for confirmation
+            pollForConfirmation(txResult.transferId, 'L1ToL2');
+          } catch (iotaError) {
+            console.error('IOTA transaction error:', iotaError);
+            addProcessingDetail(`IOTA transaction failed: ${iotaError.message}`, 'error');
+            throw new Error(`IOTA transaction failed: ${iotaError.message}`);
+          }
+        } else {
+          addProcessingDetail('IOTA wallet not connected. Cannot complete transaction.', 'error');
+          throw new Error('IOTA wallet not connected');
         }
       } else {
+        // L2 to L1 transfer
+        addProcessingDetail('Initiating Layer 2 to Layer 1 transfer');
+        
         // Call the bridge API to transfer from L2 to L1
-        txResult = await apiService.initiateL2ToL1Transfer({
-          fromAddress: currentAccount,
-          toAddress: iotaAddress || '', // If IOTA wallet not connected, transfer to same user on L1
-          amount: parseFloat(amount),
-          timestamp: Date.now()
-        });
+        try {
+          // Get the destination address (IOTA wallet)
+          const toAddress = iotaAddress || '';
+          if (!toAddress) {
+            addProcessingDetail('No IOTA wallet detected. Will use same user identifier on L1.', 'warning');
+          } else {
+            addProcessingDetail(`Target IOTA address: ${toAddress}`);
+          }
+          
+          txResult = await apiService.initiateL2ToL1Transfer({
+            fromAddress: currentAccount,
+            toAddress: toAddress,
+            amount: parseFloat(amount),
+            timestamp: Date.now()
+          });
+          
+          addProcessingDetail(`Bridge initialized with transfer ID: ${txResult.transferId}`);
+          addProcessingDetail(`Bridge address: ${txResult.bridgeAddress}`);
+        } catch (bridgeError) {
+          console.error('Bridge initialization error:', bridgeError);
+          addProcessingDetail(`Bridge initialization error: ${bridgeError.message}`, 'error');
+          throw new Error(`Bridge error: ${bridgeError.message}`);
+        }
         
         // Confirm with EVM wallet
         if (isEvmConnected) {
-          const evmTx = await sendEvmTransaction({
-            to: txResult.bridgeAddress,
-            value: parseFloat(amount),
-            data: txResult.calldata
-          });
-          
-          setTxHash(evmTx.hash);
-          
-          // Start polling for confirmation
-          pollForConfirmation(txResult.transferId, 'L2ToL1');
+          try {
+            addProcessingDetail('Sending transaction from EVM wallet...');
+            
+            const evmTx = await sendEvmTransaction({
+              to: txResult.bridgeAddress,
+              value: parseFloat(amount),
+              data: txResult.calldata || '0x'
+            });
+            
+            setTxHash(evmTx.hash);
+            addProcessingDetail(`Transaction sent! Hash: ${evmTx.hash}`, 'success');
+            
+            // Generate explorer link - use EVM explorer for L2
+            const explorerUrl = getTransactionExplorerUrl(evmTx.hash, 'l2');
+            addProcessingDetail(`View on Explorer: ${explorerUrl}`);
+            
+            // Start polling for confirmation
+            pollForConfirmation(txResult.transferId, 'L2ToL1');
+          } catch (evmError) {
+            console.error('EVM transaction error:', evmError);
+            addProcessingDetail(`EVM transaction failed: ${evmError.message}`, 'error');
+            throw new Error(`EVM transaction failed: ${evmError.message}`);
+          }
+        } else {
+          addProcessingDetail('EVM wallet not connected. Cannot complete transaction.', 'error');
+          throw new Error('EVM wallet not connected');
         }
       }
       
@@ -230,6 +333,7 @@ const CrossLayerSwap = () => {
       setError(error.message || 'Error initiating transfer. Please try again.');
       setTransferStatus('failed');
       setActiveStep(0);
+      addProcessingDetail(`Transfer failed: ${error.message}`, 'error');
     } finally {
       setLoading(false);
     }
@@ -243,21 +347,28 @@ const CrossLayerSwap = () => {
     
     const checkStatus = async () => {
       if (attempts >= maxAttempts) {
+        addProcessingDetail('Transfer is taking longer than expected. Monitoring will continue in the background.', 'warning');
         showSnackbar('Transfer is taking longer than expected. You can check status in the transaction history.', 'warning');
         return;
       }
       
       try {
+        addProcessingDetail(`Checking transfer status... (attempt ${attempts + 1})`);
         const status = await apiService.getTransferStatus(transferId);
+        
+        addProcessingDetail(`Current status: ${status.status}`);
         
         if (status.status === 'Confirmed' || status.status === 'Processed') {
           setTransferStatus('success');
           setActiveStep(2);
+          addProcessingDetail(`Transfer completed successfully!`, 'success');
           showSnackbar('Transfer completed successfully!', 'success');
           return;
         } else if (status.status === 'Failed') {
           setTransferStatus('failed');
           setError('Transfer failed. Please check the transaction history for details.');
+          addProcessingDetail('Transfer failed. Please try again or contact support.', 'error');
+          showSnackbar('Transfer failed. Please check details.', 'error');
           return;
         }
         
@@ -266,6 +377,7 @@ const CrossLayerSwap = () => {
         setTimeout(checkStatus, pollInterval);
       } catch (error) {
         console.error('Error checking transfer status:', error);
+        addProcessingDetail(`Error checking status: ${error.message}. Will retry.`, 'warning');
         // Continue polling despite error
         attempts++;
         setTimeout(checkStatus, pollInterval);
@@ -283,6 +395,7 @@ const CrossLayerSwap = () => {
     setTxHash('');
     setTransferStatus('idle');
     setError('');
+    setProcessingDetails([]);
   };
   
   // Format address for display
@@ -307,7 +420,9 @@ const CrossLayerSwap = () => {
     const sourceAddress = sourceIsL1 ? iotaAddress : currentAccount;
     const destAddress = destIsL1 ? iotaAddress : currentAccount;
     
-    const sourceBalance = sourceIsL1 ? iotaBalance?.available : evmBalance;
+    const sourceBalance = sourceIsL1 
+      ? (iotaBalance ? parseFloat(iotaBalance.baseCoins) / 1_000_000 : 0) 
+      : evmBalance;
     const sourceConnected = sourceIsL1 ? isIotaConnected : isEvmConnected;
     const destConnected = destIsL1 ? isIotaConnected : isEvmConnected;
     
@@ -315,17 +430,33 @@ const CrossLayerSwap = () => {
       <Grid container spacing={2} sx={{ mb: 3 }}>
         {/* Source Wallet */}
         <Grid item xs={12} md={5}>
-          <Card variant="outlined">
+          <Card variant="outlined" sx={{ 
+            borderColor: sourceConnected ? 'primary.main' : 'divider',
+            boxShadow: sourceConnected ? '0 0 0 1px rgba(25, 118, 210, 0.3)' : 'none',
+            transition: 'all 0.2s'
+          }}>
             <CardContent>
-              <Typography variant="subtitle1" gutterBottom>
+              <Typography variant="subtitle1" gutterBottom sx={{ 
+                display: 'flex', 
+                alignItems: 'center',
+                color: sourceConnected ? 'primary.main' : 'text.secondary'
+              }}>
+                <AccountBalanceWallet sx={{ mr: 1, fontSize: 20 }} />
                 Source ({sourceIsL1 ? 'Layer 1 - IOTA' : 'Layer 2 - EVM'})
+                {sourceConnected && (
+                  <Chip 
+                    label="Connected" 
+                    color="success" 
+                    size="small" 
+                    sx={{ ml: 'auto' }}
+                  />
+                )}
               </Typography>
               
               {sourceConnected ? (
                 <>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                    <AccountBalanceWallet sx={{ mr: 1 }} color="primary" />
-                    <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mt: 2, mb: 1 }}>
+                    <Typography variant="body2" sx={{ fontFamily: 'monospace', mr: 1 }}>
                       {formatAddress(sourceAddress)}
                     </Typography>
                     <IconButton size="small" onClick={() => copyToClipboard(sourceAddress)}>
@@ -333,14 +464,24 @@ const CrossLayerSwap = () => {
                     </IconButton>
                   </Box>
                   
-                  <Typography variant="body2">
-                    Balance: {sourceBalance ? parseFloat(sourceBalance).toFixed(6) : '0'} {sourceIsL1 ? 'SMR' : 'SMR'}
+                  <Typography variant="body2" sx={{ mt: 1, display: 'flex', alignItems: 'center' }}>
+                    <strong>Balance:</strong>
+                    <Typography 
+                      component="span" 
+                      variant="body2" 
+                      fontWeight="bold" 
+                      ml={1}
+                      color={sourceBalance < parseFloat(amount || 0) ? 'error.main' : 'inherit'}
+                    >
+                      {sourceBalance ? sourceBalance.toFixed(6) : '0'} {sourceIsL1 ? 'SMR' : 'SMR'}
+                    </Typography>
                   </Typography>
                 </>
               ) : (
                 <Button 
                   variant="outlined" 
                   size="small"
+                  sx={{ mt: 1 }}
                   onClick={sourceIsL1 ? connectIotaWallet : connectEvmWallet}
                 >
                   Connect {sourceIsL1 ? 'IOTA' : 'EVM'} Wallet
@@ -351,35 +492,70 @@ const CrossLayerSwap = () => {
         </Grid>
         
         {/* Arrow */}
-        <Grid item xs={12} md={2} sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-          <ArrowDownward sx={{ display: { xs: 'block', md: 'none' } }} />
-          <SwapHoriz sx={{ display: { xs: 'none', md: 'block' } }} />
+        <Grid item xs={12} md={2} sx={{ 
+          display: 'flex', 
+          justifyContent: 'center', 
+          alignItems: 'center',
+          minHeight: { xs: '50px', md: 'auto' }
+        }}>
+          <Paper
+            elevation={0}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: { xs: 40, md: 50 },
+              height: { xs: 40, md: 50 },
+              borderRadius: '50%',
+              bgcolor: 'background.subtle',
+              border: '1px solid',
+              borderColor: 'divider'
+            }}
+          >
+            <ArrowDownward sx={{ display: { xs: 'block', md: 'none' } }} />
+            <SwapHoriz sx={{ display: { xs: 'none', md: 'block' } }} />
+          </Paper>
         </Grid>
         
         {/* Destination Wallet */}
         <Grid item xs={12} md={5}>
-          <Card variant="outlined">
+          <Card variant="outlined" sx={{ 
+            borderColor: destConnected ? 'secondary.main' : 'divider',
+            boxShadow: destConnected ? '0 0 0 1px rgba(156, 39, 176, 0.3)' : 'none',
+            transition: 'all 0.2s'
+          }}>
             <CardContent>
-              <Typography variant="subtitle1" gutterBottom>
+              <Typography variant="subtitle1" gutterBottom sx={{ 
+                display: 'flex', 
+                alignItems: 'center',
+                color: destConnected ? 'secondary.main' : 'text.secondary'
+              }}>
+                <AccountBalanceWallet sx={{ mr: 1, fontSize: 20 }} />
                 Destination ({destIsL1 ? 'Layer 1 - IOTA' : 'Layer 2 - EVM'})
+                {destConnected && (
+                  <Chip 
+                    label="Connected" 
+                    color="success" 
+                    size="small" 
+                    sx={{ ml: 'auto' }}
+                  />
+                )}
               </Typography>
               
               {destConnected ? (
-                <>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                    <AccountBalanceWallet sx={{ mr: 1 }} color="secondary" />
-                    <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                      {formatAddress(destAddress)}
-                    </Typography>
-                    <IconButton size="small" onClick={() => copyToClipboard(destAddress)}>
-                      <ContentCopy fontSize="small" />
-                    </IconButton>
-                  </Box>
-                </>
+                <Box sx={{ display: 'flex', alignItems: 'center', mt: 2 }}>
+                  <Typography variant="body2" sx={{ fontFamily: 'monospace', mr: 1 }}>
+                    {formatAddress(destAddress)}
+                  </Typography>
+                  <IconButton size="small" onClick={() => copyToClipboard(destAddress)}>
+                    <ContentCopy fontSize="small" />
+                  </IconButton>
+                </Box>
               ) : (
                 <Button 
                   variant="outlined" 
                   size="small"
+                  sx={{ mt: 1 }}
                   onClick={destIsL1 ? connectIotaWallet : connectEvmWallet}
                 >
                   Connect {destIsL1 ? 'IOTA' : 'EVM'} Wallet
@@ -392,10 +568,25 @@ const CrossLayerSwap = () => {
     );
   };
   
+  // Get status icon based on status type
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'success':
+        return <CheckCircleOutline fontSize="small" color="success" />;
+      case 'error':
+        return <Error fontSize="small" color="error" />;
+      case 'warning':
+        return <Warning fontSize="small" color="warning" />;
+      default:
+        return <InfoOutlined fontSize="small" color="info" />;
+    }
+  };
+  
   return (
     <Box sx={{ width: '100%' }}>
       <Paper elevation={2} sx={{ p: 3, borderRadius: 2 }}>
-        <Typography variant="h6" gutterBottom>
+        <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+          <SwapHoriz sx={{ mr: 1 }} color="primary" />
           Transfer Assets Between Layers
         </Typography>
         
@@ -454,6 +645,25 @@ const CrossLayerSwap = () => {
                       ),
                     }}
                     disabled={loading}
+                    error={
+                      (swapDirection === 'L1ToL2' && 
+                       iotaBalance && 
+                       parseFloat(amount || 0) > parseFloat(iotaBalance.baseCoins) / 1_000_000) ||
+                      (swapDirection === 'L2ToL1' && 
+                       evmBalance && 
+                       parseFloat(amount || 0) > evmBalance)
+                    }
+                    helperText={
+                      (swapDirection === 'L1ToL2' && 
+                       iotaBalance && 
+                       parseFloat(amount || 0) > parseFloat(iotaBalance.baseCoins) / 1_000_000) ?
+                        `Insufficient IOTA balance. Available: ${(parseFloat(iotaBalance.baseCoins) / 1_000_000).toFixed(6)} SMR` :
+                      (swapDirection === 'L2ToL1' && 
+                       evmBalance && 
+                       parseFloat(amount || 0) > evmBalance) ?
+                        `Insufficient EVM balance. Available: ${evmBalance.toFixed(6)} SMR` :
+                        ''
+                    }
                   />
                 </Grid>
                 <Grid item xs={12} sm={4}>
@@ -461,7 +671,9 @@ const CrossLayerSwap = () => {
                     fullWidth
                     variant="outlined"
                     onClick={handleMaxAmount}
-                    disabled={loading || (!isIotaConnected && swapDirection === 'L1ToL2') || (!isEvmConnected && swapDirection === 'L2ToL1')}
+                    disabled={loading || 
+                      (!isIotaConnected && swapDirection === 'L1ToL2') || 
+                      (!isEvmConnected && swapDirection === 'L2ToL1')}
                   >
                     Max
                   </Button>
@@ -495,6 +707,17 @@ const CrossLayerSwap = () => {
                       {estimatedTime}
                     </Typography>
                   </Grid>
+                  
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="text.secondary">
+                      Will Receive:
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" fontWeight="medium">
+                      {amount ? (parseFloat(amount) - estimatedGas).toFixed(6) : '0.00'} SMR
+                    </Typography>
+                  </Grid>
                 </Grid>
               </Box>
               
@@ -509,7 +732,17 @@ const CrossLayerSwap = () => {
                 <Button
                   variant="contained"
                   color="primary"
-                  disabled={loading || !amount || parseFloat(amount) <= 0}
+                  disabled={
+                    loading || 
+                    !amount || 
+                    parseFloat(amount) <= 0 ||
+                    (swapDirection === 'L1ToL2' && 
+                     iotaBalance && 
+                     parseFloat(amount) > parseFloat(iotaBalance.baseCoins) / 1_000_000) ||
+                    (swapDirection === 'L2ToL1' && 
+                     evmBalance && 
+                     parseFloat(amount) > evmBalance)
+                  }
                   onClick={handleSwap}
                   startIcon={loading ? <CircularProgress size={20} /> : <SwapHoriz />}
                 >
@@ -520,14 +753,55 @@ const CrossLayerSwap = () => {
           )}
           
           {activeStep === 1 && (
-            <Box sx={{ textAlign: 'center', p: 3 }}>
-              <CircularProgress sx={{ mb: 2 }} />
-              <Typography variant="h6" gutterBottom>
-                Processing Transfer
-              </Typography>
-              <Typography variant="body2" color="text.secondary" paragraph>
-                Your transfer is being processed. This may take {estimatedTime}.
-              </Typography>
+            <Box sx={{ p: 2 }}>
+              <Box sx={{ textAlign: 'center', p: 3 }}>
+                <CircularProgress sx={{ mb: 2 }} />
+                <Typography variant="h6" gutterBottom>
+                  Processing Transfer
+                </Typography>
+                <Typography variant="body2" color="text.secondary" paragraph>
+                  Your transfer is being processed. This may take {estimatedTime}.
+                </Typography>
+              </Box>
+              
+              {/* Processing details log */}
+              <Box sx={{ mt: 3, maxHeight: '300px', overflowY: 'auto', bgcolor: 'background.default', borderRadius: 1, p: 2 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Processing Log
+                </Typography>
+                {processingDetails.map((detail, index) => (
+                  <Box 
+                    key={index} 
+                    sx={{ 
+                      display: 'flex', 
+                      alignItems: 'flex-start', 
+                      mb: 1,
+                      borderLeft: '2px solid',
+                      borderLeftColor: detail.status === 'success' ? 'success.main' : 
+                                       detail.status === 'error' ? 'error.main' :
+                                       detail.status === 'warning' ? 'warning.main' : 
+                                       'info.main',
+                      pl: 1,
+                      py: 0.5
+                    }}
+                  >
+                    {getStatusIcon(detail.status)}
+                    <Box sx={{ ml: 1 }}>
+                      <Typography variant="body2">
+                        {detail.message}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {new Date(detail.timestamp).toLocaleTimeString()}
+                      </Typography>
+                    </Box>
+                  </Box>
+                ))}
+                {processingDetails.length === 0 && (
+                  <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+                    No processing details yet
+                  </Typography>
+                )}
+              </Box>
               
               {txHash && (
                 <Box sx={{ mt: 2, p: 2, bgcolor: 'background.subtle', borderRadius: 1, textAlign: 'left' }}>
@@ -535,7 +809,7 @@ const CrossLayerSwap = () => {
                     Transaction Hash
                   </Typography>
                   <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <Typography variant="body2" sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                    <Typography variant="body2" sx={{ fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {txHash}
                     </Typography>
                     <IconButton size="small" onClick={() => copyToClipboard(txHash)}>
@@ -544,9 +818,11 @@ const CrossLayerSwap = () => {
                     <IconButton 
                       size="small" 
                       component={Link} 
-                      href={swapDirection === 'L1ToL2' 
-                        ? `https://explorer.shimmer.network/testnet/block/${txHash}` 
-                        : `https://explorer.shimmer.network/testnet/evm/tx/${txHash}`} 
+                      href={
+                        swapDirection === 'L1ToL2' 
+                          ? getTransactionExplorerUrl(txHash, 'l1')
+                          : getTransactionExplorerUrl(txHash, 'l2')
+                      }
                       target="_blank"
                     >
                       <OpenInNew fontSize="small" />
@@ -579,7 +855,7 @@ const CrossLayerSwap = () => {
                     Transaction Hash
                   </Typography>
                   <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <Typography variant="body2" sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                    <Typography variant="body2" sx={{ fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {txHash}
                     </Typography>
                     <IconButton size="small" onClick={() => copyToClipboard(txHash)}>
@@ -588,9 +864,11 @@ const CrossLayerSwap = () => {
                     <IconButton 
                       size="small" 
                       component={Link} 
-                      href={swapDirection === 'L1ToL2' 
-                        ? `https://explorer.shimmer.network/testnet/block/${txHash}` 
-                        : `https://explorer.shimmer.network/testnet/evm/tx/${txHash}`} 
+                      href={
+                        swapDirection === 'L1ToL2' 
+                          ? getTransactionExplorerUrl(txHash, 'l1')
+                          : getTransactionExplorerUrl(txHash, 'l2')
+                      }
                       target="_blank"
                     >
                       <OpenInNew fontSize="small" />

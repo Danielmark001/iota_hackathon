@@ -11,12 +11,14 @@ const lendingRoutes = require('./lendingRoutes');
 const riskRoutes = require('./riskRoutes');
 const crossChainRoutes = require('./crossChainRoutes');
 const identityRoutes = require('./identityRoutes');
+const iotaRoutes = require('./iotaRoutes');
 
 // Mount routes
 router.use('/lending', lendingRoutes);
 router.use('/risk', riskRoutes);
 router.use('/cross-chain', crossChainRoutes);
 router.use('/identity', identityRoutes);
+router.use('/iota', iotaRoutes);
 
 // API root
 router.get('/', (req, res) => {
@@ -27,7 +29,8 @@ router.get('/', (req, res) => {
       lending: '/api/lending',
       risk: '/api/risk',
       crossChain: '/api/cross-chain',
-      identity: '/api/identity'
+      identity: '/api/identity',
+      iota: '/api/iota'
     }
   });
 });

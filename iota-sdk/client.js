@@ -17,6 +17,51 @@ initLogger({
   targetExclusions: ['sync']
 });
 
+// Simple in-memory cache for queries to reduce network calls
+const queryCache = new Map();
+const CACHE_TTL = parseInt(process.env.CACHE_TTL || '300') * 1000; // 5 minutes in ms default
+const CACHE_ENABLED = process.env.CACHE_ENABLED !== 'false'; // Enable caching by default
+
+/**
+ * Generic cache function for any async operation
+ * @param {string} key - Cache key
+ * @param {Function} asyncFn - Async function to cache
+ * @param {Object} options - Cache options
+ * @returns {Promise<any>} - Result of the async function
+ */
+async function withCache(key, asyncFn, options = {}) {
+  // Default options
+  const useCache = options.useCache !== false && CACHE_ENABLED;
+  const cacheTTL = options.cacheTTL || CACHE_TTL;
+  
+  // Check cache first if enabled
+  if (useCache && queryCache.has(key)) {
+    const cachedData = queryCache.get(key);
+    if (Date.now() - cachedData.timestamp < cacheTTL) {
+      logger.debug(`Cache hit for key: ${key}`);
+      return cachedData.data;
+    } else {
+      // Cache expired
+      logger.debug(`Cache expired for key: ${key}`);
+      queryCache.delete(key);
+    }
+  }
+  
+  // Execute the function
+  const result = await asyncFn();
+  
+  // Store in cache if caching is enabled
+  if (useCache) {
+    queryCache.set(key, {
+      data: result,
+      timestamp: Date.now()
+    });
+    logger.debug(`Cached result for key: ${key}`);
+  }
+  
+  return result;
+}
+
 /**
  * Node Manager for handling node failover and health checks
  */
@@ -475,71 +520,78 @@ async function generateAddress(client, accountIndex = 0, addressIndex = 0, netwo
 }
 
 /**
- * Get balance for a Bech32 address with enhanced resilience
+ * Get balance for a Bech32 address with enhanced resilience and caching
  * @param {Client} client - The IOTA client instance
  * @param {string} address - The Bech32 address
  * @param {NodeManager} nodeManager - Optional node manager for failover
+ * @param {Object} options - Additional options (useCache, cacheTTL)
  * @returns {Promise<object>} The balance of the address
  */
-async function getBalance(client, address, nodeManager = null) {
-  return await withExponentialBackoff(async () => {
-    try {
-      // Input validation with proper handling for different networks
-      if (!address) {
-        throw new Error('Address is required');
-      }
-      
-      // Determine valid prefix based on the client's network
-      const settings = client.getSettings();
-      const networkInfo = settings.networkInfo || {};
-      const validPrefix = networkInfo.bech32Hrp || 'smr';
-      
-      if (!address.startsWith(`${validPrefix}1`)) {
-        throw new Error(`Invalid address format: must be a valid ${validPrefix.toUpperCase()} address starting with ${validPrefix}1`);
-      }
-      
-      // Query balance
-      const balance = await client.getAddressBalance(address);
-      
-      // Format for better readability
-      const baseAmount = BigInt(balance.baseCoins) / BigInt(1000000);
-      logger.info(`Balance for ${address}: ${baseAmount} ${validPrefix.toUpperCase()}`);
-      
-      // Add additional token information if present
-      if (balance.nativeTokens && balance.nativeTokens.length > 0) {
-        logger.info('Native tokens:');
-        balance.nativeTokens.forEach(token => {
-          logger.info(`- Token ID: ${token.id.slice(0, 10)}...`);
-          logger.info(`  Amount: ${token.amount}`);
-        });
-      }
-      
-      return balance;
-    } catch (error) {
-      logger.error(`Error getting balance for ${address}: ${error.message}`);
-      
-      // Handle node errors with failover if node manager is provided
-      if (nodeManager && error.message && (
-        error.message.includes('connect') ||
-        error.message.includes('timeout') ||
-        error.message.includes('ECONNREFUSED') ||
-        error.message.includes('503')
-      )) {
-        // Mark current node as unhealthy
-        nodeManager.markCurrentNodeUnhealthy(error);
+async function getBalance(client, address, nodeManager = null, options = {}) {
+  // Generate cache key
+  const cacheKey = `balance-${address}`;
+  
+  // Use withCache to handle caching logic
+  return await withCache(cacheKey, async () => {
+    return await withExponentialBackoff(async () => {
+      try {
+        // Input validation with proper handling for different networks
+        if (!address) {
+          throw new Error('Address is required');
+        }
         
-        // Update client nodes
-        client.updateSetting('nodes', nodeManager.getHealthyNodes());
+        // Determine valid prefix based on the client's network
+        const settings = client.getSettings();
+        const networkInfo = settings.networkInfo || {};
+        const validPrefix = networkInfo.bech32Hrp || 'smr';
+        
+        if (!address.startsWith(`${validPrefix}1`)) {
+          throw new Error(`Invalid address format: must be a valid ${validPrefix.toUpperCase()} address starting with ${validPrefix}1`);
+        }
+        
+        // Query balance
+        const balance = await client.getAddressBalance(address);
+        
+        // Format for better readability
+        const baseAmount = BigInt(balance.baseCoins) / BigInt(1000000);
+        logger.info(`Balance for ${address}: ${baseAmount} ${validPrefix.toUpperCase()}`);
+        
+        // Add additional token information if present
+        if (balance.nativeTokens && balance.nativeTokens.length > 0) {
+          logger.info('Native tokens:');
+          balance.nativeTokens.forEach(token => {
+            logger.info(`- Token ID: ${token.id.slice(0, 10)}...`);
+            logger.info(`  Amount: ${token.amount}`);
+          });
+        }
+        
+        return balance;
+      } catch (error) {
+        logger.error(`Error getting balance for ${address}: ${error.message}`);
+        
+        // Handle node errors with failover if node manager is provided
+        if (nodeManager && error.message && (
+          error.message.includes('connect') ||
+          error.message.includes('timeout') ||
+          error.message.includes('ECONNREFUSED') ||
+          error.message.includes('503')
+        )) {
+          // Mark current node as unhealthy
+          nodeManager.markCurrentNodeUnhealthy(error);
+          
+          // Update client nodes
+          client.updateSetting('nodes', nodeManager.getHealthyNodes());
+        }
+        
+        // Provide more helpful error messages
+        if (error.message && error.message.includes('not found')) {
+          throw new Error('Address not found on the network or has no transactions');
+        }
+        
+        throw error;
       }
-      
-      // Provide more helpful error messages
-      if (error.message && error.message.includes('not found')) {
-        throw new Error('Address not found on the network or has no transactions');
-      }
-      
-      throw error;
-    }
-  });
+    });
+  }, options);
 }
 
 /**
@@ -652,8 +704,11 @@ async function monitorTransaction(client, blockId, statusCallback, options = {})
           return resolve({ status: 'timeout', blockId });
         }
         
-        // Check block inclusion
-        const inclusion = await client.checkBlockInclusion(blockId);
+        // Check block inclusion - use cache with short TTL for frequent checks
+        const inclusionCacheKey = `inclusion-${blockId}`;
+        const inclusion = await withCache(inclusionCacheKey, async () => {
+          return await client.checkBlockInclusion(blockId);
+        }, { cacheTTL: Math.min(checkInterval/2, 5000) }); // Cache for half the check interval or 5 seconds, whichever is less
         
         // If status has changed, call the callback
         if (!lastStatus || lastStatus.state !== inclusion.state) {
@@ -697,50 +752,57 @@ async function monitorTransaction(client, blockId, statusCallback, options = {})
 }
 
 /**
- * Get network information with enhanced resilience
+ * Get network information with enhanced resilience and caching
  * @param {Client} client - The IOTA client instance
  * @param {NodeManager} nodeManager - Optional node manager for failover
+ * @param {Object} options - Additional options (useCache, cacheTTL)
  * @returns {Promise<object>} Network information
  */
-async function getNetworkInfo(client, nodeManager = null) {
-  return await withExponentialBackoff(async () => {
-    try {
-      const info = await client.getInfo();
-      const protocol = await client.getProtocolParameters();
-      
-      // Combine relevant information
-      return {
-        nodeInfo: info.nodeInfo,
-        protocol: protocol,
-        baseToken: protocol.baseToken,
-        networkName: protocol.networkName,
-        bech32Hrp: protocol.bech32Hrp,
-        networkId: protocol.networkId,
-        // Add additional useful information
-        isHealthy: info.nodeInfo.status.isHealthy,
-        currentNode: client.getSettings().nodes[0],
-        currentTime: new Date().toISOString()
-      };
-    } catch (error) {
-      logger.error(`Error getting network information: ${error.message}`);
-      
-      // Handle node errors with failover if node manager is provided
-      if (nodeManager && error.message && (
-        error.message.includes('connect') ||
-        error.message.includes('timeout') ||
-        error.message.includes('ECONNREFUSED') ||
-        error.message.includes('503')
-      )) {
-        // Mark current node as unhealthy
-        nodeManager.markCurrentNodeUnhealthy(error);
+async function getNetworkInfo(client, nodeManager = null, options = {}) {
+  // Generate cache key
+  const cacheKey = 'network-info';
+  
+  // Use withCache to handle caching logic
+  return await withCache(cacheKey, async () => {
+    return await withExponentialBackoff(async () => {
+      try {
+        const info = await client.getInfo();
+        const protocol = await client.getProtocolParameters();
         
-        // Update client nodes
-        client.updateSetting('nodes', nodeManager.getHealthyNodes());
+        // Combine relevant information
+        return {
+          nodeInfo: info.nodeInfo,
+          protocol: protocol,
+          baseToken: protocol.baseToken,
+          networkName: protocol.networkName,
+          bech32Hrp: protocol.bech32Hrp,
+          networkId: protocol.networkId,
+          // Add additional useful information
+          isHealthy: info.nodeInfo.status.isHealthy,
+          currentNode: client.getSettings().nodes[0],
+          currentTime: new Date().toISOString()
+        };
+      } catch (error) {
+        logger.error(`Error getting network information: ${error.message}`);
+        
+        // Handle node errors with failover if node manager is provided
+        if (nodeManager && error.message && (
+          error.message.includes('connect') ||
+          error.message.includes('timeout') ||
+          error.message.includes('ECONNREFUSED') ||
+          error.message.includes('503')
+        )) {
+          // Mark current node as unhealthy
+          nodeManager.markCurrentNodeUnhealthy(error);
+          
+          // Update client nodes
+          client.updateSetting('nodes', nodeManager.getHealthyNodes());
+        }
+        
+        throw error;
       }
-      
-      throw error;
-    }
-  });
+    });
+  }, options);
 }
 
 /**
@@ -776,45 +838,52 @@ async function getTips(client, nodeManager = null) {
 }
 
 /**
- * Get transactions by address with enhanced resilience
+ * Get transactions by address with enhanced resilience and caching
  * @param {Client} client - The IOTA client instance
  * @param {string} address - Bech32 address to query
  * @param {NodeManager} nodeManager - Optional node manager for failover
+ * @param {Object} options - Additional options (useCache, cacheTTL)
  * @returns {Promise<object[]>} Transactions for the address
  */
-async function getAddressTransactions(client, address, nodeManager = null) {
-  return await withExponentialBackoff(async () => {
-    try {
-      // Input validation
-      if (!address) {
-        throw new Error('Address is required');
-      }
-      
-      // Use client to get transactions
-      const transactions = await client.getAddressOutputs(address);
-      
-      logger.info(`Found ${transactions.length} transactions for address ${address}`);
-      return transactions;
-    } catch (error) {
-      logger.error(`Error getting transactions for ${address}: ${error.message}`);
-      
-      // Handle node errors with failover if node manager is provided
-      if (nodeManager && error.message && (
-        error.message.includes('connect') ||
-        error.message.includes('timeout') ||
-        error.message.includes('ECONNREFUSED') ||
-        error.message.includes('503')
-      )) {
-        // Mark current node as unhealthy
-        nodeManager.markCurrentNodeUnhealthy(error);
+async function getAddressTransactions(client, address, nodeManager = null, options = {}) {
+  // Generate cache key
+  const cacheKey = `transactions-${address}`;
+  
+  // Use withCache to handle caching logic
+  return await withCache(cacheKey, async () => {
+    return await withExponentialBackoff(async () => {
+      try {
+        // Input validation
+        if (!address) {
+          throw new Error('Address is required');
+        }
         
-        // Update client nodes
-        client.updateSetting('nodes', nodeManager.getHealthyNodes());
+        // Use client to get transactions
+        const transactions = await client.getAddressOutputs(address);
+        
+        logger.info(`Found ${transactions.length} transactions for address ${address}`);
+        return transactions;
+      } catch (error) {
+        logger.error(`Error getting transactions for ${address}: ${error.message}`);
+        
+        // Handle node errors with failover if node manager is provided
+        if (nodeManager && error.message && (
+          error.message.includes('connect') ||
+          error.message.includes('timeout') ||
+          error.message.includes('ECONNREFUSED') ||
+          error.message.includes('503')
+        )) {
+          // Mark current node as unhealthy
+          nodeManager.markCurrentNodeUnhealthy(error);
+          
+          // Update client nodes
+          client.updateSetting('nodes', nodeManager.getHealthyNodes());
+        }
+        
+        throw error;
       }
-      
-      throw error;
-    }
-  });
+    });
+  }, options);
 }
 
 /**
@@ -868,6 +937,138 @@ async function unsubscribeFromEvents(client, subscriptionId) {
   }
 }
 
+/**
+ * Submit transactions in batches to optimize throughput
+ * @param {Client} client - The IOTA client instance
+ * @param {Array} transactions - Array of transaction objects to submit
+ * @param {Object} options - Batch options
+ * @returns {Promise<Array>} Results of transactions
+ */
+async function submitTransactionBatch(client, transactions, options = {}) {
+  // Default options
+  const batchSize = options.batchSize || 10;
+  const concurrentBatches = options.concurrentBatches || 2;
+  const delayBetweenBatches = options.delayBetweenBatches || 1000; // ms
+  
+  logger.info(`Submitting ${transactions.length} transactions in batches of ${batchSize}`);
+  
+  // Split transactions into batches
+  const batches = [];
+  for (let i = 0; i < transactions.length; i += batchSize) {
+    batches.push(transactions.slice(i, i + batchSize));
+  }
+  
+  // Process batches with controlled concurrency
+  const results = [];
+  for (let i = 0; i < batches.length; i += concurrentBatches) {
+    const currentBatches = batches.slice(i, i + concurrentBatches);
+    
+    // Process current batches concurrently
+    const batchPromises = currentBatches.map(async (batch) => {
+      const batchResults = [];
+      
+      for (const tx of batch) {
+        try {
+          const result = await submitBlock(client, tx);
+          batchResults.push({ success: true, blockId: result.blockId, tx });
+        } catch (error) {
+          logger.error(`Error submitting transaction: ${error.message}`);
+          batchResults.push({ success: false, error: error.message, tx });
+        }
+      }
+      
+      return batchResults;
+    });
+    
+    // Wait for all current batches to complete
+    const batchResults = await Promise.all(batchPromises);
+    results.push(...batchResults.flat());
+    
+    // Delay between batch groups to avoid rate limiting
+    if (i + concurrentBatches < batches.length) {
+      await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
+    }
+  }
+  
+  // Return summary
+  const successCount = results.filter(r => r.success).length;
+  logger.info(`Batch submission complete: ${successCount}/${transactions.length} successful`);
+  
+  return results;
+}
+
+/**
+ * Clear the query cache or specific keys
+ * @param {string|string[]} keys - Optional specific keys to clear, or all if not specified
+ * @returns {number} Number of cache entries cleared
+ */
+function clearCache(keys = null) {
+  if (!keys) {
+    // Clear all cache
+    const count = queryCache.size;
+    queryCache.clear();
+    logger.info(`Cleared entire query cache (${count} entries)`);
+    return count;
+  } else if (Array.isArray(keys)) {
+    // Clear specific keys
+    let count = 0;
+    for (const key of keys) {
+      if (queryCache.has(key)) {
+        queryCache.delete(key);
+        count++;
+      }
+    }
+    logger.info(`Cleared ${count} entries from query cache`);
+    return count;
+  } else if (typeof keys === 'string') {
+    // Clear a single key
+    const deleted = queryCache.delete(keys);
+    logger.info(`Cleared cache entry for key: ${keys}`);
+    return deleted ? 1 : 0;
+  }
+  
+  return 0;
+}
+
+/**
+ * Get cache statistics
+ * @returns {Object} Cache statistics
+ */
+function getCacheStats() {
+  const stats = {
+    size: queryCache.size,
+    keys: Array.from(queryCache.keys()),
+    averageAge: 0,
+    oldestEntry: null,
+    newestEntry: null
+  };
+  
+  if (queryCache.size > 0) {
+    let totalAge = 0;
+    let oldest = Date.now();
+    let newest = 0;
+    
+    for (const [key, entry] of queryCache.entries()) {
+      const age = Date.now() - entry.timestamp;
+      totalAge += age;
+      
+      if (entry.timestamp < oldest) {
+        oldest = entry.timestamp;
+        stats.oldestEntry = { key, age: age / 1000 };
+      }
+      
+      if (entry.timestamp > newest) {
+        newest = entry.timestamp;
+        stats.newestEntry = { key, age: age / 1000 };
+      }
+    }
+    
+    stats.averageAge = queryCache.size > 0 ? (totalAge / queryCache.size) / 1000 : 0;
+  }
+  
+  return stats;
+}
+
 module.exports = {
   // Core client functionality
   createClient,
@@ -880,6 +1081,12 @@ module.exports = {
   // Enhanced transaction monitoring
   monitorTransaction,
   getAddressTransactions,
+  
+  // Performance optimization
+  submitTransactionBatch,
+  withCache,
+  clearCache,
+  getCacheStats,
   
   // Event subscriptions
   subscribeToEvents,

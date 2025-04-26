@@ -19,18 +19,29 @@ import {
   TableCell,
   TableContainer,
   TableHead,
-  TableRow
+  TableRow,
+  Link,
+  Tooltip,
+  IconButton,
+  LinearProgress
 } from '@mui/material';
 import {
   Refresh as RefreshIcon,
   CompareArrows as SwapIcon,
   Send as SendIcon,
   AccountBalance as AccountIcon,
-  Link as LinkIcon
+  Link as LinkIcon,
+  CheckCircle as CheckIcon,
+  Warning as WarningIcon,
+  Error as ErrorIcon,
+  ScheduleOutlined as PendingIcon,
+  ContentCopy as CopyIcon,
+  Timeline as TimelineIcon
 } from '@mui/icons-material';
 import axios from 'axios';
-import { useWeb3React } from '@web3-react/core';
-import { useIOTAContext } from '../../contexts/IOTAContext';
+import { useWeb3 } from '../../context/Web3Context';
+import { useIoTA } from '../../context/IoTAContext';
+import { useSnackbar } from '../../context/SnackbarContext';
 
 /**
  * Cross-Layer Dashboard Component
@@ -45,22 +56,42 @@ function CrossLayerDashboard() {
   const [l1Data, setL1Data] = useState(null);
   const [l2Data, setL2Data] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [transactions, setTransactions] = useState([]);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
   
   // Web3 context for EVM connection
-  const { active: web3Active, account, library } = useWeb3React();
+  const { isConnected: web3Active, account } = useWeb3();
   
   // IOTA context for L1 connection
-  const { connected: iotaConnected, address: iotaAddress, api: iotaApi } = useIOTAContext();
+  const { 
+    isConnected: iotaConnected, 
+    address: iotaAddress, 
+    network, 
+    networkInfo,
+    getExplorerUrl,
+    getTransactionExplorerUrl
+  } = useIoTA();
+
+  // Snackbar for notifications
+  const { showSnackbar } = useSnackbar();
   
   // Handle tab change
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
   };
   
+  // Copy to clipboard
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text).then(
+      () => showSnackbar('Copied to clipboard!', 'success'),
+      () => showSnackbar('Failed to copy', 'error')
+    );
+  };
+  
   // Fetch all data
   const fetchData = async () => {
-    setLoading(true);
+    setRefreshing(true);
     setError(null);
     
     try {
@@ -101,6 +132,20 @@ function CrossLayerDashboard() {
             .catch(error => {
               console.error('Error fetching cross-layer messages:', error);
               // Don't set main error for this, as it's not critical
+              setMessages([]);
+            })
+        );
+      }
+      
+      // Cross-layer transactions request
+      if (iotaAddress || account) {
+        requests.push(
+          axios.get(`/api/cross-layer/transactions/${iotaAddress || account}`)
+            .then(response => setTransactions(response.data.transactions || []))
+            .catch(error => {
+              console.error('Error fetching cross-layer transactions:', error);
+              // Don't set main error for this, as it's not critical
+              setTransactions([]);
             })
         );
       }
@@ -110,11 +155,13 @@ function CrossLayerDashboard() {
       
       // Update last updated timestamp
       setLastUpdated(new Date());
+      setLoading(false);
     } catch (error) {
       console.error('Error fetching data:', error);
       setError('Failed to fetch data. Please try again later.');
-    } finally {
       setLoading(false);
+    } finally {
+      setRefreshing(false);
     }
   };
   
@@ -138,22 +185,78 @@ function CrossLayerDashboard() {
     return date.toLocaleString();
   };
   
-  // Format status for display
-  const getStatusColor = (status) => {
-    switch (status?.toLowerCase()) {
-      case 'confirmed':
-      case 'completed':
-        return 'success';
-      case 'pending':
-      case 'processing':
-        return 'warning';
-      case 'failed':
-      case 'rejected':
-      case 'conflicting':
-        return 'error';
-      default:
-        return 'default';
+  // Format address for display
+  const formatAddress = (address) => {
+    if (!address) return 'N/A';
+    return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
+  };
+  
+  // Get status icon based on status
+  const getStatusIcon = (status) => {
+    const statusLower = status?.toLowerCase();
+    
+    if (['confirmed', 'completed', 'processed'].includes(statusLower)) {
+      return <CheckIcon fontSize="small" color="success" />;
+    } else if (['pending', 'processing'].includes(statusLower)) {
+      return <PendingIcon fontSize="small" color="warning" />;
+    } else if (['failed', 'rejected', 'conflicting'].includes(statusLower)) {
+      return <ErrorIcon fontSize="small" color="error" />;
     }
+    
+    return <WarningIcon fontSize="small" color="action" />;
+  };
+  
+  // Get status color for chips
+  const getStatusColor = (status) => {
+    const statusLower = status?.toLowerCase();
+    
+    if (['confirmed', 'completed', 'processed'].includes(statusLower)) {
+      return 'success';
+    } else if (['pending', 'processing'].includes(statusLower)) {
+      return 'warning';
+    } else if (['failed', 'rejected', 'conflicting'].includes(statusLower)) {
+      return 'error';
+    }
+    
+    return 'default';
+  };
+  
+  // Render health factor indicator
+  const renderHealthFactor = (factor) => {
+    let color = 'success.main';
+    let message = 'Good';
+    
+    if (factor <= 1.0) {
+      color = 'error.main';
+      message = 'Liquidation Risk';
+    } else if (factor <= 1.5) {
+      color = 'warning.main';
+      message = 'At Risk';
+    }
+    
+    return (
+      <Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+          <Typography variant="h6" color={color} fontWeight="bold">
+            {factor.toFixed(2)}
+          </Typography>
+          <Tooltip title={`Health factor: ${message}`}>
+            <Chip 
+              label={message} 
+              color={factor <= 1.0 ? 'error' : factor <= 1.5 ? 'warning' : 'success'} 
+              size="small" 
+              sx={{ ml: 1 }}
+            />
+          </Tooltip>
+        </Box>
+        <LinearProgress
+          variant="determinate"
+          value={Math.min(100, (factor / 3) * 100)}
+          color={factor <= 1.0 ? 'error' : factor <= 1.5 ? 'warning' : 'success'}
+          sx={{ height: 6, borderRadius: 3 }}
+        />
+      </Box>
+    );
   };
   
   // Render loading state
@@ -169,13 +272,25 @@ function CrossLayerDashboard() {
     <Box>
       <Card>
         <CardHeader 
-          title="Cross-Layer Dashboard" 
-          subheader={`View your positions across IOTA L1 and L2 networks${lastUpdated ? ` • Updated ${formatDate(lastUpdated)}` : ''}`}
+          title={
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <TimelineIcon sx={{ mr: 1 }} color="primary" />
+              Cross-Layer Dashboard
+            </Box>
+          }
+          subheader={
+            <Typography variant="body2" color="text.secondary">
+              View your positions across IOTA L1 and L2 networks
+              {lastUpdated ? ` • Updated ${formatDate(lastUpdated)}` : ''}
+            </Typography>
+          }
           action={
             <Button 
-              startIcon={<RefreshIcon />} 
+              startIcon={refreshing ? <CircularProgress size={20} /> : <RefreshIcon />} 
               onClick={fetchData}
-              disabled={loading}
+              disabled={refreshing}
+              variant="outlined"
+              size="small"
             >
               Refresh
             </Button>
@@ -190,19 +305,62 @@ function CrossLayerDashboard() {
         
         <CardContent>
           {/* Connection Status */}
-          <Paper sx={{ p: 2, mb: 3 }}>
+          <Paper 
+            sx={{ 
+              p: 2, 
+              mb: 3, 
+              borderRadius: 2,
+              border: '1px solid',
+              borderColor: 'divider'
+            }}
+          >
             <Grid container spacing={2}>
               <Grid item xs={12} md={6}>
                 <Box display="flex" alignItems="center">
-                  <AccountIcon color={iotaConnected ? "success" : "disabled"} sx={{ mr: 1 }} />
+                  <Box 
+                    sx={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      bgcolor: iotaConnected ? 'success.main' : 'grey.500',
+                      mr: 1.5
+                    }}
+                  />
                   <Box>
-                    <Typography variant="subtitle2">
+                    <Typography variant="subtitle2" fontWeight="medium">
                       IOTA L1 (Tangle) {iotaConnected ? "Connected" : "Not Connected"}
                     </Typography>
                     {iotaConnected && iotaAddress && (
-                      <Typography variant="body2" color="text.secondary">
-                        {iotaAddress.substring(0, 10)}...{iotaAddress.substring(iotaAddress.length - 10)}
-                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5 }}>
+                        <Typography 
+                          variant="body2" 
+                          color="text.secondary"
+                          sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
+                        >
+                          {iotaAddress.substring(0, 10)}...{iotaAddress.substring(iotaAddress.length - 10)}
+                        </Typography>
+                        <Tooltip title="Copy address">
+                          <IconButton 
+                            size="small" 
+                            onClick={() => copyToClipboard(iotaAddress)}
+                            sx={{ ml: 0.5 }}
+                          >
+                            <CopyIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="View in explorer">
+                          <IconButton
+                            size="small"
+                            component={Link}
+                            href={getExplorerUrl(iotaAddress)}
+                            target="_blank"
+                            rel="noopener"
+                            sx={{ ml: 0.5 }}
+                          >
+                            <LinkIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
                     )}
                   </Box>
                 </Box>
@@ -210,15 +368,50 @@ function CrossLayerDashboard() {
               
               <Grid item xs={12} md={6}>
                 <Box display="flex" alignItems="center">
-                  <AccountIcon color={web3Active ? "success" : "disabled"} sx={{ mr: 1 }} />
+                  <Box 
+                    sx={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      bgcolor: web3Active ? 'success.main' : 'grey.500',
+                      mr: 1.5
+                    }}
+                  />
                   <Box>
-                    <Typography variant="subtitle2">
+                    <Typography variant="subtitle2" fontWeight="medium">
                       IOTA L2 (EVM) {web3Active ? "Connected" : "Not Connected"}
                     </Typography>
                     {web3Active && account && (
-                      <Typography variant="body2" color="text.secondary">
-                        {account.substring(0, 6)}...{account.substring(account.length - 4)}
-                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5 }}>
+                        <Typography 
+                          variant="body2" 
+                          color="text.secondary"
+                          sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
+                        >
+                          {account.substring(0, 6)}...{account.substring(account.length - 4)}
+                        </Typography>
+                        <Tooltip title="Copy address">
+                          <IconButton 
+                            size="small" 
+                            onClick={() => copyToClipboard(account)}
+                            sx={{ ml: 0.5 }}
+                          >
+                            <CopyIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="View in explorer">
+                          <IconButton
+                            size="small"
+                            component={Link}
+                            href={getExplorerUrl(account, 'l2')}
+                            target="_blank"
+                            rel="noopener"
+                            sx={{ ml: 0.5 }}
+                          >
+                            <LinkIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
                     )}
                   </Box>
                 </Box>
@@ -235,7 +428,7 @@ function CrossLayerDashboard() {
             >
               <Tab label="Overview" />
               <Tab label="Cross-Layer Messages" />
-              <Tab label="Atomic Swaps" />
+              <Tab label="Cross-Layer Transactions" />
             </Tabs>
           </Box>
           
@@ -244,10 +437,29 @@ function CrossLayerDashboard() {
             <Grid container spacing={3}>
               {/* L1 Positions */}
               <Grid item xs={12} md={6}>
-                <Card variant="outlined">
+                <Card 
+                  variant="outlined"
+                  sx={{
+                    borderColor: iotaConnected ? 'primary.main' : 'divider',
+                    borderRadius: 2,
+                    transition: 'all 0.2s'
+                  }}
+                >
                   <CardHeader 
-                    title="IOTA L1 Positions" 
+                    title={
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <AccountIcon sx={{ mr: 1 }} color="primary" />
+                        IOTA L1 Positions
+                      </Box>
+                    }
                     subheader="Native IOTA and assets on Tangle"
+                    action={
+                      <Chip 
+                        label={networkInfo?.name || 'IOTA Network'} 
+                        color={network === 'mainnet' ? 'success' : 'warning'} 
+                        size="small"
+                      />
+                    }
                   />
                   <Divider />
                   <CardContent>
@@ -261,31 +473,33 @@ function CrossLayerDashboard() {
                       </Box>
                     ) : (
                       <>
-                        <Typography variant="h6" gutterBottom>
+                        <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
                           Balance: {l1Data.balance} IOTA
                         </Typography>
                         
                         {l1Data.tokens && l1Data.tokens.length > 0 && (
                           <Box mt={2}>
-                            <Typography variant="subtitle2" gutterBottom>
+                            <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'medium' }}>
                               Native Tokens:
                             </Typography>
-                            <Table size="small">
-                              <TableHead>
-                                <TableRow>
-                                  <TableCell>Token</TableCell>
-                                  <TableCell align="right">Balance</TableCell>
-                                </TableRow>
-                              </TableHead>
-                              <TableBody>
-                                {l1Data.tokens.map((token) => (
-                                  <TableRow key={token.id}>
-                                    <TableCell>{token.name || token.id.substring(0, 8)}</TableCell>
-                                    <TableCell align="right">{token.balance}</TableCell>
+                            <TableContainer>
+                              <Table size="small">
+                                <TableHead>
+                                  <TableRow>
+                                    <TableCell>Token</TableCell>
+                                    <TableCell align="right">Balance</TableCell>
                                   </TableRow>
-                                ))}
-                              </TableBody>
-                            </Table>
+                                </TableHead>
+                                <TableBody>
+                                  {l1Data.tokens.map((token) => (
+                                    <TableRow key={token.id}>
+                                      <TableCell>{token.name || token.id.substring(0, 8)}</TableCell>
+                                      <TableCell align="right">{token.balance}</TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </TableContainer>
                           </Box>
                         )}
                         
@@ -294,7 +508,10 @@ function CrossLayerDashboard() {
                             variant="outlined" 
                             size="small"
                             endIcon={<LinkIcon />}
-                            onClick={() => window.open(`https://explorer.shimmer.network/testnet/address/${iotaAddress}`, '_blank')}
+                            component={Link}
+                            href={getExplorerUrl(iotaAddress)}
+                            target="_blank"
+                            rel="noopener"
                           >
                             View on Explorer
                           </Button>
@@ -307,10 +524,29 @@ function CrossLayerDashboard() {
               
               {/* L2 Positions */}
               <Grid item xs={12} md={6}>
-                <Card variant="outlined">
+                <Card 
+                  variant="outlined"
+                  sx={{
+                    borderColor: web3Active ? 'secondary.main' : 'divider',
+                    borderRadius: 2,
+                    transition: 'all 0.2s'
+                  }}
+                >
                   <CardHeader 
-                    title="IOTA L2 Positions" 
+                    title={
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <AccountIcon sx={{ mr: 1 }} color="secondary" />
+                        IOTA L2 Positions
+                      </Box>
+                    }
                     subheader="EVM assets and lending positions"
+                    action={
+                      <Chip 
+                        label={`L2 ${networkInfo?.name || 'EVM Network'}`} 
+                        color={network === 'mainnet' ? 'success' : 'warning'} 
+                        size="small"
+                      />
+                    }
                   />
                   <Divider />
                   <CardContent>
@@ -324,38 +560,29 @@ function CrossLayerDashboard() {
                       </Box>
                     ) : (
                       <>
-                        <Grid container spacing={2}>
+                        <Grid container spacing={2} sx={{ mb: 2 }}>
                           <Grid item xs={6}>
-                            <Typography variant="subtitle2">Deposits:</Typography>
-                            <Typography variant="h6">{l2Data.deposits} SMR</Typography>
+                            <Typography variant="subtitle2" color="text.secondary">Deposits:</Typography>
+                            <Typography variant="h6" fontWeight="bold">{l2Data.deposits} SMR</Typography>
                           </Grid>
                           <Grid item xs={6}>
-                            <Typography variant="subtitle2">Borrows:</Typography>
-                            <Typography variant="h6">{l2Data.borrows} SMR</Typography>
+                            <Typography variant="subtitle2" color="text.secondary">Borrows:</Typography>
+                            <Typography variant="h6" fontWeight="bold">{l2Data.borrows} SMR</Typography>
                           </Grid>
                           <Grid item xs={6}>
-                            <Typography variant="subtitle2">Collateral:</Typography>
-                            <Typography variant="h6">{l2Data.collateral} SMR</Typography>
+                            <Typography variant="subtitle2" color="text.secondary">Collateral:</Typography>
+                            <Typography variant="h6" fontWeight="bold">{l2Data.collateral} SMR</Typography>
                           </Grid>
                           <Grid item xs={6}>
-                            <Typography variant="subtitle2">Health Factor:</Typography>
-                            <Typography 
-                              variant="h6" 
-                              color={
-                                l2Data.healthFactor > 1.5 ? 'success.main' : 
-                                l2Data.healthFactor > 1.0 ? 'warning.main' : 
-                                'error.main'
-                              }
-                            >
-                              {l2Data.healthFactor.toFixed(2)}
-                            </Typography>
+                            <Typography variant="subtitle2" color="text.secondary">Health Factor:</Typography>
+                            {renderHealthFactor(l2Data.healthFactor)}
                           </Grid>
                         </Grid>
                         
                         <Divider sx={{ my: 2 }} />
                         
                         <Box display="flex" alignItems="center">
-                          <Typography variant="subtitle2" mr={1}>Risk Score:</Typography>
+                          <Typography variant="subtitle2" color="text.secondary" mr={1}>Risk Score:</Typography>
                           <Chip 
                             label={l2Data.riskScore} 
                             color={
@@ -365,6 +592,11 @@ function CrossLayerDashboard() {
                             }
                             size="small"
                           />
+                          <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                            {l2Data.riskScore < 30 ? 'Low Risk' : 
+                             l2Data.riskScore < 70 ? 'Medium Risk' : 
+                             'High Risk'}
+                          </Typography>
                         </Box>
                         
                         <Box mt={2} display="flex" justifyContent="flex-end">
@@ -372,7 +604,10 @@ function CrossLayerDashboard() {
                             variant="outlined" 
                             size="small"
                             endIcon={<LinkIcon />}
-                            onClick={() => window.open(`https://explorer.evm.shimmer.network/address/${account}`, '_blank')}
+                            component={Link}
+                            href={getExplorerUrl(account, 'l2')}
+                            target="_blank"
+                            rel="noopener"
                           >
                             View on Explorer
                           </Button>
@@ -385,9 +620,21 @@ function CrossLayerDashboard() {
               
               {/* Cross-Layer Operations */}
               <Grid item xs={12}>
-                <Card variant="outlined">
+                <Card 
+                  variant="outlined"
+                  sx={{ 
+                    borderRadius: 2,
+                    bgcolor: 'background.subtle',
+                    borderColor: 'primary.light'
+                  }}
+                >
                   <CardHeader 
-                    title="Cross-Layer Operations" 
+                    title={
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <SwapIcon sx={{ mr: 1 }} color="primary" />
+                        Cross-Layer Operations
+                      </Box>
+                    }
                     subheader="Transfer assets and data between L1 and L2"
                   />
                   <Divider />
@@ -417,7 +664,11 @@ function CrossLayerDashboard() {
                       </Grid>
                       <Grid item xs={12}>
                         {(!iotaConnected || !web3Active) && (
-                          <Alert severity="info" sx={{ mt: 2 }}>
+                          <Alert 
+                            severity="info" 
+                            sx={{ mt: 2 }}
+                            icon={<InfoOutlined />}
+                          >
                             Connect both L1 and L2 wallets to enable cross-layer operations
                           </Alert>
                         )}
@@ -431,20 +682,29 @@ function CrossLayerDashboard() {
           
           {/* Cross-Layer Messages Tab */}
           {activeTab === 1 && (
-            <Card variant="outlined">
+            <Card variant="outlined" sx={{ borderRadius: 2 }}>
               <CardHeader 
-                title="Cross-Layer Messages" 
+                title={
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <SendIcon sx={{ mr: 1 }} color="primary" />
+                    Cross-Layer Messages
+                  </Box>
+                }
                 subheader="Communication between L1 and L2 layers"
               />
               <Divider />
               <CardContent>
-                {messages.length === 0 ? (
+                {(!iotaConnected && !web3Active) ? (
+                  <Alert severity="info">
+                    Connect at least one wallet to view cross-layer messages
+                  </Alert>
+                ) : messages.length === 0 ? (
                   <Alert severity="info">
                     No cross-layer messages found
                   </Alert>
                 ) : (
-                  <TableContainer>
-                    <Table>
+                  <TableContainer sx={{ maxHeight: 400 }}>
+                    <Table stickyHeader>
                       <TableHead>
                         <TableRow>
                           <TableCell>Message ID</TableCell>
@@ -452,29 +712,56 @@ function CrossLayerDashboard() {
                           <TableCell>Type</TableCell>
                           <TableCell>Status</TableCell>
                           <TableCell>Timestamp</TableCell>
+                          <TableCell align="right">Actions</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
                         {messages.map((message) => (
-                          <TableRow key={message.messageId}>
+                          <TableRow key={message.messageId} hover>
                             <TableCell>
-                              {message.messageId.substring(0, 8)}...
+                              <Tooltip title={message.messageId}>
+                                <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                                  {message.messageId.substring(0, 8)}...
+                                </Typography>
+                              </Tooltip>
                             </TableCell>
                             <TableCell>
-                              {message.direction === 'L1ToL2' ? 'L1 → L2' : 'L2 → L1'}
+                              <Chip 
+                                label={message.direction === 'L1ToL2' ? 'L1 → L2' : 'L2 → L1'} 
+                                color={message.direction === 'L1ToL2' ? 'primary' : 'secondary'} 
+                                size="small"
+                                variant="outlined"
+                              />
                             </TableCell>
                             <TableCell>
                               {message.messageType || 'Unknown'}
                             </TableCell>
                             <TableCell>
-                              <Chip 
-                                label={message.status} 
-                                color={getStatusColor(message.status)}
-                                size="small"
-                              />
+                              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                {getStatusIcon(message.status)}
+                                <Chip 
+                                  label={message.status} 
+                                  color={getStatusColor(message.status)}
+                                  size="small"
+                                  sx={{ ml: 1 }}
+                                />
+                              </Box>
                             </TableCell>
                             <TableCell>
                               {formatDate(message.timestamp)}
+                            </TableCell>
+                            <TableCell align="right">
+                              <Tooltip title="View details">
+                                <IconButton 
+                                  size="small"
+                                  onClick={() => {
+                                    // Show message details dialog (not implemented)
+                                    showSnackbar('Message details not implemented yet', 'info');
+                                  }}
+                                >
+                                  <InfoOutlined fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -486,29 +773,110 @@ function CrossLayerDashboard() {
             </Card>
           )}
           
-          {/* Atomic Swaps Tab */}
+          {/* Cross-Layer Transactions Tab */}
           {activeTab === 2 && (
-            <Card variant="outlined">
+            <Card variant="outlined" sx={{ borderRadius: 2 }}>
               <CardHeader 
-                title="Atomic Swaps" 
-                subheader="Cross-layer asset exchanges"
+                title={
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <SwapIcon sx={{ mr: 1 }} color="primary" />
+                    Cross-Layer Transactions
+                  </Box>
+                }
+                subheader="Asset transfers between L1 and L2"
               />
               <Divider />
               <CardContent>
-                <Alert severity="info" sx={{ mb: 3 }}>
-                  Atomic swaps allow you to exchange assets between IOTA L1 and L2 in a single transaction.
-                </Alert>
+                {(!iotaConnected && !web3Active) ? (
+                  <Alert severity="info">
+                    Connect at least one wallet to view cross-layer transactions
+                  </Alert>
+                ) : transactions.length === 0 ? (
+                  <Alert severity="info">
+                    No cross-layer transactions found. Transfer assets between layers to get started.
+                  </Alert>
+                ) : (
+                  <TableContainer sx={{ maxHeight: 400 }}>
+                    <Table stickyHeader>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Transaction ID</TableCell>
+                          <TableCell>Direction</TableCell>
+                          <TableCell>Amount</TableCell>
+                          <TableCell>Status</TableCell>
+                          <TableCell>Timestamp</TableCell>
+                          <TableCell align="right">Actions</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {transactions.map((tx) => (
+                          <TableRow key={tx.id || tx.transactionId} hover>
+                            <TableCell>
+                              <Tooltip title={tx.id || tx.transactionId}>
+                                <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                                  {(tx.id || tx.transactionId).substring(0, 8)}...
+                                </Typography>
+                              </Tooltip>
+                            </TableCell>
+                            <TableCell>
+                              <Chip 
+                                label={tx.direction === 'L1ToL2' ? 'L1 → L2' : 'L2 → L1'} 
+                                color={tx.direction === 'L1ToL2' ? 'primary' : 'secondary'} 
+                                size="small"
+                                variant="outlined"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              {tx.amount} SMR
+                            </TableCell>
+                            <TableCell>
+                              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                {getStatusIcon(tx.status)}
+                                <Chip 
+                                  label={tx.status} 
+                                  color={getStatusColor(tx.status)}
+                                  size="small"
+                                  sx={{ ml: 1 }}
+                                />
+                              </Box>
+                            </TableCell>
+                            <TableCell>
+                              {formatDate(tx.timestamp)}
+                            </TableCell>
+                            <TableCell align="right">
+                              <Tooltip title="View in explorer">
+                                <IconButton 
+                                  size="small"
+                                  component={Link}
+                                  href={
+                                    tx.direction === 'L1ToL2'
+                                      ? getTransactionExplorerUrl(tx.blockId || tx.id || tx.transactionId, 'l1')
+                                      : getTransactionExplorerUrl(tx.hash || tx.id || tx.transactionId, 'l2')
+                                  }
+                                  target="_blank"
+                                  rel="noopener"
+                                >
+                                  <LinkIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
                 
-                <Button 
-                  variant="contained" 
-                  startIcon={<SwapIcon />}
-                  onClick={() => window.location.href = '/swap'}
-                  disabled={!iotaConnected || !web3Active}
-                >
-                  Initiate New Atomic Swap
-                </Button>
-                
-                {/* Todo: Add historical atomic swaps table */}
+                <Box mt={3}>
+                  <Button 
+                    variant="contained" 
+                    startIcon={<SwapIcon />}
+                    onClick={() => window.location.href = '/swap'}
+                    disabled={!iotaConnected && !web3Active}
+                  >
+                    New Cross-Layer Transfer
+                  </Button>
+                </Box>
               </CardContent>
             </Card>
           )}

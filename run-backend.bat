@@ -1,7 +1,7 @@
 @echo off
 echo Starting IntelliLend Backend with IOTA Integration...
-cd %~dp0\backend
+cd %~dp0
 echo Checking for dependencies...
 npm install --no-save
 echo Initializing IOTA connections...
-node server.js
+node backend/server.js

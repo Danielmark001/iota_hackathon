@@ -1,505 +1,327 @@
 /**
- * IOTA Cross-Layer Communication Module
+ * IOTA Cross-Layer Aggregator
  * 
- * This module provides functionality for cross-layer communication
- * between IOTA L1 (Tangle) and L2 (EVM), including atomic swaps and
- * message passing.
+ * Handles cross-layer communication between IOTA L1 (Move) and L2 (EVM).
+ * Provides a unified interface for transmitting data across the layers.
  */
 
-const { ethers } = require('ethers');
-const { submitBlock, monitorTransaction, getAddressTransactions, withExponentialBackoff } = require('./client');
-const { sendTokens, monitorTransaction: monitorWalletTransaction } = require('./wallet');
-const { CircuitBreaker } = require('./utils/circuit-breaker');
 const logger = require('./utils/logger');
-const config = require('./config');
+const { withExponentialBackoff, withCache } = require('./client');
+const { ethers } = require('ethers');
 
-// ABI for bridge contract
+// Bridge ABI for cross-layer communication
 const BRIDGE_ABI = [
-  "function sendMessage(address _to, bytes calldata _data) external payable returns (bytes32)",
-  "function getMessageIds(address _address) external view returns (bytes32[])",
-  "function getMessageStatus(bytes32 _messageId) external view returns (uint8)",
-  "function relayMessage(bytes32 _messageId, address _from, address _to, bytes calldata _data) external",
-  "function atomicSwap(address _recipient, uint256 _amount, uint256 _timelock) external payable returns (bytes32)",
-  "function completeSwap(bytes32 _swapId) external",
-  "function cancelSwap(bytes32 _swapId) external"
+  // Basic bridge functions
+  "function sendMessageToL1(address targetAddress, string messageType, bytes payload) external returns (uint256 messageId)",
+  "function sendMessageToL2(address targetAddress, string messageType, bytes payload) external returns (uint256 messageId)",
+  "function getMessageStatus(uint256 messageId) external view returns (uint8 status, uint16 confirmations, uint256 timestamp)",
+  "function getMessageIds(address user) external view returns (uint256[] memory messageIds)",
+  "function getMessageDetails(uint256 messageId) external view returns (address sender, address targetAddress, string messageType, uint8 status, uint8 direction, uint256 timestamp, bytes payload)"
 ];
 
-/**
- * Cross-Layer Aggregator for communication between L1 and L2
- */
 class CrossLayerAggregator {
-  /**
-   * Create a new Cross-Layer Aggregator
-   * @param {Object} client - IOTA client
-   * @param {Object} options - Configuration options
-   */
-  constructor(client, options = {}) {
-    this.client = client;
-    this.wallet = options.wallet || null;
-    this.account = options.account || null;
-    this.evmProvider = options.evmProvider || null;
-    this.bridgeAddress = options.bridgeAddress || null;
-    this.privateKey = options.privateKey || null;
-    this.bridgeContract = null;
-    this.signer = null;
+  constructor(options = {}) {
+    this.client = options.client;
+    this.bridgeAddress = options.bridgeAddress;
     this.l1NetworkType = options.l1NetworkType || 'iota';
     this.l2NetworkType = options.l2NetworkType || 'evm';
+    this.privateKey = options.privateKey;
+    this.provider = options.provider || (options.l2NetworkType === 'evm' ? 'https://api.shimmer.network/evm' : null);
+    this.streamsService = options.streamsService;
+    this.evmProvider = null;
+    this.bridge = null;
+    this.wallet = null;
     
-    // Initialize circuit breakers
-    this.circuitBreaker = {
-      l1ToL2: new CircuitBreaker({
-        failureThreshold: 3,
-        resetTimeout: 30000,
-        fallbackFunction: () => ({ 
-          messageId: null,
-          error: 'Circuit open: L1 to L2 messaging is currently unavailable'
-        })
-      }),
-      l2ToL1: new CircuitBreaker({
-        failureThreshold: 3,
-        resetTimeout: 30000,
-        fallbackFunction: () => ({ 
-          messageId: null,
-          error: 'Circuit open: L2 to L1 messaging is currently unavailable'
-        })
-      }),
-      atomicSwap: new CircuitBreaker({
-        failureThreshold: 3,
-        resetTimeout: 60000
-      })
-    };
+    // In-memory cache for cross-layer message status
+    this.messageStatusCache = new Map();
     
-    // Message ID cache to avoid duplication
-    this.messageCache = new Map();
+    // Initialize connector
+    this.initialize();
     
-    // Initialize bridge contract if options are provided
-    if (this.bridgeAddress && (this.evmProvider || this.privateKey)) {
-      this.initializeBridge();
-    }
-    
-    logger.info(`Cross-Layer Aggregator initialized for ${this.l1NetworkType} and ${this.l2NetworkType}`);
+    logger.info('Cross-Layer Aggregator initialized');
   }
   
   /**
-   * Initialize bridge contract connection
+   * Initialize connector and establish connections
    */
-  async initializeBridge() {
+  async initialize() {
     try {
-      // Initialize EVM provider if not provided
-      if (!this.evmProvider) {
-        const network = process.env.IOTA_NETWORK || config.DEFAULT_NETWORK;
-        const networkConfig = config.NETWORKS[network];
-        
-        if (!networkConfig || !networkConfig.evmRpcUrl) {
-          throw new Error(`No EVM RPC URL configured for network: ${network}`);
-        }
-        
-        this.evmProvider = new ethers.providers.JsonRpcProvider(networkConfig.evmRpcUrl);
-        logger.info(`Connected to EVM RPC: ${networkConfig.evmRpcUrl}`);
+      // Initialize EVM provider
+      if (this.provider) {
+        this.evmProvider = new ethers.providers.JsonRpcProvider(this.provider);
+        logger.info(`Connected to L2 provider at ${this.provider}`);
       }
       
-      // Initialize signer if private key is provided
-      if (this.privateKey) {
-        this.signer = new ethers.Wallet(this.privateKey, this.evmProvider);
-        logger.info('Initialized EVM signer from private key');
+      // Initialize wallet if private key is provided
+      if (this.privateKey && this.evmProvider) {
+        this.wallet = new ethers.Wallet(this.privateKey, this.evmProvider);
+        logger.info('Wallet initialized for cross-layer operations');
       }
       
-      // Use provider as signer fallback
-      const contractSigner = this.signer || this.evmProvider;
-      
-      // Connect to bridge contract
-      this.bridgeContract = new ethers.Contract(this.bridgeAddress, BRIDGE_ABI, contractSigner);
-      logger.info(`Connected to bridge contract at ${this.bridgeAddress}`);
-      
-      return true;
+      // Initialize bridge contract if address is provided
+      if (this.bridgeAddress && this.evmProvider) {
+        // Use wallet if available, otherwise read-only
+        const bridgeConnection = this.wallet || this.evmProvider;
+        this.bridge = new ethers.Contract(this.bridgeAddress, BRIDGE_ABI, bridgeConnection);
+        logger.info(`Bridge contract initialized at ${this.bridgeAddress}`);
+      }
     } catch (error) {
-      logger.error(`Error initializing bridge: ${error.message}`);
-      throw new Error(`Failed to initialize bridge: ${error.message}`);
+      logger.error(`Error initializing cross-layer connector: ${error.message}`);
     }
   }
   
   /**
-   * Set bridge address and reinitialize bridge
-   * @param {string} bridgeAddress - Bridge contract address
+   * Set wallet for signing transactions
+   * @param {string} privateKey - Private key for wallet
    */
-  async setBridgeAddress(bridgeAddress) {
-    this.bridgeAddress = bridgeAddress;
-    return this.initializeBridge();
-  }
-  
-  /**
-   * Set EVM provider and reinitialize bridge
-   * @param {Object} evmProvider - EVM provider
-   */
-  async setEvmProvider(evmProvider) {
-    this.evmProvider = evmProvider;
-    return this.initializeBridge();
-  }
-  
-  /**
-   * Set private key and reinitialize bridge
-   * @param {string} privateKey - Private key for EVM transactions
-   */
-  async setPrivateKey(privateKey) {
-    this.privateKey = privateKey;
-    return this.initializeBridge();
-  }
-  
-  /**
-   * Set wallet account
-   * @param {Object} account - IOTA wallet account
-   */
-  setAccount(account) {
-    this.account = account;
-    logger.info('IOTA wallet account set');
-  }
-  
-  /**
-   * Generate a unique message ID
-   * @param {Object} message - Message object
-   * @returns {string} Message ID
-   */
-  generateMessageId(message) {
-    // Create a deterministic ID based on message content and timestamp
-    const content = JSON.stringify(message) + Date.now().toString();
-    const hash = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(content));
-    return hash;
-  }
-  
-  /**
-   * Send a message from L1 (IOTA) to L2 (EVM)
-   * @param {Object} message - Message to send
-   * @param {Object} options - Message options
-   * @returns {Promise<Object>} Message result
-   */
-  async sendMessageToL2(message, options = {}) {
-    return this.circuitBreaker.l1ToL2.execute(async () => {
-      try {
-        logger.info(`Sending message from L1 to L2: ${JSON.stringify(message)}`);
-        
-        // Validate message
-        if (!message.targetAddress || !ethers.utils.isAddress(message.targetAddress)) {
-          throw new Error('Invalid target address for L2 message');
-        }
-        
-        if (!message.payload) {
-          throw new Error('Message payload is required');
-        }
-        
-        // Use bridge contract if available
-        if (this.bridgeContract && this.signer) {
-          // Encode message data
-          const encodedData = ethers.utils.defaultAbiCoder.encode(
-            ['bytes'],
-            [ethers.utils.toUtf8Bytes(JSON.stringify(message.payload))]
-          );
-          
-          // Send message through bridge
-          const tx = await this.bridgeContract.sendMessage(
-            message.targetAddress,
-            encodedData,
-            { gasLimit: options.gasLimit || 500000 }
-          );
-          
-          logger.info(`Message sent to L2, waiting for confirmation: ${tx.hash}`);
-          
-          // Wait for confirmation
-          const receipt = await tx.wait();
-          
-          // Extract message ID from events
-          let messageId = null;
-          if (receipt.events && receipt.events.length > 0) {
-            const event = receipt.events.find(e => e.event === 'MessageSent');
-            if (event && event.args && event.args.messageId) {
-              messageId = event.args.messageId;
-            }
-          }
-          
-          // If messageId not found, use a generated ID
-          if (!messageId) {
-            messageId = this.generateMessageId(message);
-          }
-          
-          // Cache message
-          this.messageCache.set(messageId, {
-            ...message,
-            direction: 'L1ToL2',
-            timestamp: Date.now(),
-            transactionHash: receipt.transactionHash
-          });
-          
-          logger.info(`Message confirmed on L2, message ID: ${messageId}`);
-          
-          return {
-            messageId,
-            transactionHash: receipt.transactionHash,
-            blockNumber: receipt.blockNumber,
-            status: 'confirmed',
-            timestamp: Date.now()
-          };
-        } else {
-          // Fallback to IOTA Tangle for message storage
-          // Generate message ID
-          const messageId = this.generateMessageId(message);
-          
-          // Create message object
-          const messageData = {
-            id: messageId,
-            targetAddress: message.targetAddress,
-            payload: message.payload,
-            sender: options.sender || 'unknown',
-            direction: 'L1ToL2',
-            timestamp: Date.now(),
-            status: 'pending'
-          };
-          
-          // Submit to IOTA Tangle as tagged data
-          const blockData = {
-            payload: {
-              type: 1, // Tagged data
-              tag: Buffer.from('CROSS_LAYER_MESSAGE').toString('hex'),
-              data: Buffer.from(JSON.stringify(messageData)).toString('hex')
-            }
-          };
-          
-          // Submit block
-          const result = await submitBlock(this.client, blockData);
-          
-          // Cache message
-          this.messageCache.set(messageId, {
-            ...messageData,
-            blockId: result.blockId
-          });
-          
-          logger.info(`Message stored on L1, message ID: ${messageId}, block ID: ${result.blockId}`);
-          
-          return {
-            messageId,
-            blockId: result.blockId,
-            status: 'pending',
-            timestamp: Date.now()
-          };
-        }
-      } catch (error) {
-        logger.error(`Error sending message from L1 to L2: ${error.message}`);
-        throw new Error(`Failed to send message from L1 to L2: ${error.message}`);
+  setWallet(privateKey) {
+    try {
+      if (!this.evmProvider) {
+        throw new Error('EVM provider not initialized');
       }
-    });
+      
+      this.privateKey = privateKey;
+      this.wallet = new ethers.Wallet(privateKey, this.evmProvider);
+      
+      // Reconnect bridge with wallet
+      if (this.bridgeAddress) {
+        this.bridge = new ethers.Contract(this.bridgeAddress, BRIDGE_ABI, this.wallet);
+      }
+      
+      logger.info('Wallet initialized for cross-layer operations');
+    } catch (error) {
+      logger.error(`Error setting wallet: ${error.message}`);
+      throw error;
+    }
   }
   
   /**
    * Send a message from L2 (EVM) to L1 (IOTA)
-   * @param {Object} message - Message to send
    * @param {Object} options - Message options
    * @returns {Promise<Object>} Message result
    */
-  async sendMessageToL1(message, options = {}) {
-    return this.circuitBreaker.l2ToL1.execute(async () => {
-      try {
-        logger.info(`Sending message from L2 to L1: ${JSON.stringify(message)}`);
-        
-        // Validate message
-        if (!message.targetAddress) {
-          throw new Error('Target address is required for L1 message');
-        }
-        
-        if (!message.payload) {
-          throw new Error('Message payload is required');
-        }
-        
-        // Use bridge and streams for redundancy
-        const useBridge = options.useBridge !== false;
-        const useStreams = options.useStreams !== false;
-        
-        // Generate message ID
-        const messageId = this.generateMessageId(message);
-        
-        // Create message object
-        const messageData = {
-          id: messageId,
-          targetAddress: message.targetAddress,
-          payload: message.payload,
-          sender: options.sender || 'unknown',
-          direction: 'L2ToL1',
-          timestamp: Date.now(),
-          status: 'pending'
-        };
-        
-        // Bridge result (if used)
-        let bridgeResult = null;
-        
-        // If using bridge and account is available, send a message through bridge
-        if (useBridge && this.account) {
-          try {
-            // Submit the message data to the Tangle for bridge pickup
-            const blockData = {
-              payload: {
-                type: 1, // Tagged data
-                tag: Buffer.from('BRIDGE_MESSAGE').toString('hex'),
-                data: Buffer.from(JSON.stringify(messageData)).toString('hex')
-              }
-            };
-            
-            // Submit block
-            bridgeResult = await submitBlock(this.client, blockData);
-            logger.info(`Bridge message stored on Tangle, block ID: ${bridgeResult.blockId}`);
-          } catch (bridgeError) {
-            logger.error(`Bridge message failed: ${bridgeError.message}`);
-            bridgeResult = { error: bridgeError.message };
-          }
-        }
-        
-        // Streams result (if used)
-        let streamsResult = null;
-        
-        // If using streams and streams service is available
-        if (useStreams && options.streamsService) {
-          try {
-            // Send through streams
-            streamsResult = await options.streamsService.sendMessage({
-              type: 'CROSS_LAYER_MESSAGE',
-              data: messageData
-            });
-            logger.info(`Message sent through streams, stream ID: ${streamsResult.messageId}`);
-          } catch (streamsError) {
-            logger.error(`Streams message failed: ${streamsError.message}`);
-            streamsResult = { error: streamsError.message };
-          }
-        }
-        
-        // Submit message to Tangle as well for redundancy
-        const blockData = {
-          payload: {
-            type: 1, // Tagged data
-            tag: Buffer.from('CROSS_LAYER_MESSAGE').toString('hex'),
-            data: Buffer.from(JSON.stringify(messageData)).toString('hex')
-          }
-        };
-        
-        // Submit block
-        const result = await submitBlock(this.client, blockData);
-        
-        // Cache message
-        this.messageCache.set(messageId, {
-          ...messageData,
-          blockId: result.blockId,
-          bridgeResult,
-          streamsResult
-        });
-        
-        logger.info(`Message stored on Tangle, message ID: ${messageId}, block ID: ${result.blockId}`);
-        
-        return {
-          messageId,
-          blockId: result.blockId,
-          bridgeStatus: bridgeResult ? 'sent' : 'not_used',
-          streamsStatus: streamsResult ? 'sent' : 'not_used',
-          status: 'pending',
-          timestamp: Date.now()
-        };
-      } catch (error) {
-        logger.error(`Error sending message from L2 to L1: ${error.message}`);
-        throw new Error(`Failed to send message from L2 to L1: ${error.message}`);
+  async sendMessageToL1(options) {
+    try {
+      const { targetAddress, messageType, payload, sender, useBridge = true, useStreams = false } = options;
+      
+      if (!targetAddress) {
+        throw new Error('Target address is required');
       }
-    });
+      
+      if (!messageType) {
+        throw new Error('Message type is required');
+      }
+      
+      logger.info(`Sending message to L1: ${messageType}`);
+      
+      // Track delivery status
+      const delivery = {
+        messageId: null,
+        bridgeStatus: 'not_attempted',
+        streamsStatus: 'not_attempted',
+        timestamp: Date.now()
+      };
+      
+      // Send via bridge if enabled
+      if (useBridge) {
+        try {
+          if (!this.bridge) {
+            throw new Error('Bridge not initialized');
+          }
+          
+          if (!this.wallet) {
+            throw new Error('Wallet not initialized for sending transactions');
+          }
+          
+          // Convert payload to bytes if needed
+          const payloadBytes = typeof payload === 'string' 
+            ? ethers.utils.toUtf8Bytes(payload)
+            : ethers.utils.toUtf8Bytes(JSON.stringify(payload));
+          
+          // Send message via bridge
+          const tx = await this.bridge.sendMessageToL1(
+            targetAddress,
+            messageType,
+            payloadBytes
+          );
+          
+          // Wait for transaction to be mined
+          const receipt = await tx.wait();
+          
+          // Extract messageId from events
+          const messageIdEvent = receipt.events?.find(e => e.event === 'MessageSent');
+          const messageId = messageIdEvent?.args?.messageId?.toString() || null;
+          
+          delivery.messageId = messageId;
+          delivery.bridgeStatus = 'sent';
+          delivery.transactionHash = receipt.transactionHash;
+          
+          logger.info(`Message sent via bridge with ID ${messageId}`);
+        } catch (bridgeError) {
+          logger.error(`Error sending message via bridge: ${bridgeError.message}`);
+          delivery.bridgeStatus = 'failed';
+          delivery.bridgeError = bridgeError.message;
+          
+          // Only throw if streams is not enabled as fallback
+          if (!useStreams) {
+            throw bridgeError;
+          }
+        }
+      }
+      
+      // Send via streams if enabled
+      if (useStreams) {
+        try {
+          if (!this.streamsService) {
+            throw new Error('Streams service not initialized');
+          }
+          
+          // Format message
+          const message = {
+            type: 'CROSS_LAYER_MESSAGE',
+            messageType,
+            targetAddress,
+            payload,
+            sender: sender || (this.wallet ? this.wallet.address : 'unknown'),
+            timestamp: Date.now(),
+            messageId: delivery.messageId // Include bridge messageId if available
+          };
+          
+          // Send message via streams
+          const result = await this.streamsService.sendMessage(message);
+          
+          delivery.streamsStatus = 'sent';
+          delivery.streamsTxId = result.messageId;
+          
+          logger.info(`Message sent via streams with ID ${result.messageId}`);
+          
+          // If bridge failed, use streams messageId
+          if (delivery.bridgeStatus === 'failed' && !delivery.messageId) {
+            delivery.messageId = result.messageId;
+          }
+        } catch (streamsError) {
+          logger.error(`Error sending message via streams: ${streamsError.message}`);
+          delivery.streamsStatus = 'failed';
+          delivery.streamsError = streamsError.message;
+          
+          // Only throw if bridge also failed or was not attempted
+          if (delivery.bridgeStatus !== 'sent') {
+            throw streamsError;
+          }
+        }
+      }
+      
+      // If neither bridge nor streams succeeded
+      if (delivery.bridgeStatus !== 'sent' && delivery.streamsStatus !== 'sent') {
+        throw new Error('Failed to send message via any channel');
+      }
+      
+      // Generate a messageId if none exists
+      if (!delivery.messageId) {
+        delivery.messageId = `msg-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
+      }
+      
+      // Cache message status
+      this.messageStatusCache.set(delivery.messageId.toString(), {
+        status: 'pending',
+        bridgeStatus: delivery.bridgeStatus,
+        streamsStatus: delivery.streamsStatus,
+        timestamp: Date.now()
+      });
+      
+      return delivery;
+    } catch (error) {
+      logger.error(`Error sending cross-layer message: ${error.message}`);
+      throw error;
+    }
   }
   
   /**
-   * Get message status
-   * @param {string} messageId - Message ID to check
+   * Get status of a cross-layer message
+   * @param {string} messageId - Message ID
    * @returns {Promise<Object>} Message status
    */
   async getMessageStatus(messageId) {
     try {
+      if (!messageId) {
+        throw new Error('Message ID is required');
+      }
+      
       logger.info(`Getting status for message: ${messageId}`);
       
       // Check cache first
-      const cachedMessage = this.messageCache.get(messageId);
+      const cacheKey = `message-status-${messageId}`;
       
-      // If bridge contract is available and messageId looks like a hash, try to get status from bridge
-      if (this.bridgeContract && messageId.startsWith('0x')) {
-        try {
-          const statusCode = await this.bridgeContract.getMessageStatus(messageId);
-          
-          // Convert status code to string
-          const statusMap = {
-            0: 'pending',
-            1: 'processing',
-            2: 'confirmed',
-            3: 'failed'
-          };
-          
-          const status = statusMap[statusCode] || 'unknown';
-          
-          logger.info(`Message ${messageId} status from bridge: ${status}`);
-          
-          // Update cache if message exists
-          if (cachedMessage) {
-            cachedMessage.status = status;
-            cachedMessage.lastChecked = Date.now();
-            this.messageCache.set(messageId, cachedMessage);
+      return await withCache(cacheKey, async () => {
+        let bridgeStatus = null;
+        let streamsStatus = null;
+        
+        // Check bridge status if available
+        if (this.bridge) {
+          try {
+            const status = await this.bridge.getMessageStatus(messageId);
+            
+            bridgeStatus = {
+              status: ['Pending', 'Processed', 'Failed', 'Canceled'][status.status] || 'Unknown',
+              confirmations: status.confirmations.toNumber(),
+              timestamp: status.timestamp.toNumber() * 1000 // Convert to JS timestamp
+            };
+          } catch (bridgeError) {
+            logger.debug(`Error getting bridge status: ${bridgeError.message}`);
+            // Not found in bridge, could be streams-only message
           }
-          
-          return {
-            messageId,
-            status,
-            source: 'bridge',
-            lastChecked: Date.now(),
-            ...(cachedMessage || {})
-          };
-        } catch (bridgeError) {
-          logger.warn(`Error getting message status from bridge: ${bridgeError.message}`);
-          // Continue to check Tangle if bridge fails
         }
-      }
-      
-      // Check on Tangle if message is cached with a blockId
-      if (cachedMessage && cachedMessage.blockId) {
-        try {
-          // Get the block metadata
-          const metadata = await this.client.blockMetadata(cachedMessage.blockId);
-          
-          let status = 'pending';
-          if (metadata.milestone_timestamp_booked) {
-            status = 'confirmed';
-          } else if (metadata.is_conflicting) {
-            status = 'conflicting';
+        
+        // Check streams status if available
+        if (this.streamsService) {
+          try {
+            const messages = await this.streamsService.getMessages({
+              filter: {
+                messageId
+              }
+            });
+            
+            if (messages && messages.length > 0) {
+              const message = messages[0];
+              
+              streamsStatus = {
+                status: message.confirmed ? 'Confirmed' : 'Pending',
+                timestamp: message.timestamp
+              };
+            }
+          } catch (streamsError) {
+            logger.debug(`Error getting streams status: ${streamsError.message}`);
+            // Not found in streams, could be bridge-only message
           }
-          
-          logger.info(`Message ${messageId} status from Tangle: ${status}`);
-          
-          // Update cache
-          cachedMessage.status = status;
-          cachedMessage.lastChecked = Date.now();
-          cachedMessage.metadata = metadata;
-          this.messageCache.set(messageId, cachedMessage);
-          
-          return {
-            messageId,
-            status,
-            source: 'tangle',
-            lastChecked: Date.now(),
-            ...cachedMessage
-          };
-        } catch (tangleError) {
-          logger.warn(`Error getting message status from Tangle: ${tangleError.message}`);
         }
-      }
-      
-      // If we still have cachedMessage but couldn't get updated status
-      if (cachedMessage) {
+        
+        // Check in-memory cache as fallback
+        let cachedStatus = null;
+        if (this.messageStatusCache.has(messageId.toString())) {
+          cachedStatus = this.messageStatusCache.get(messageId.toString());
+        }
+        
+        // Combine statuses
+        let status;
+        if (bridgeStatus) {
+          status = bridgeStatus.status;
+        } else if (streamsStatus) {
+          status = streamsStatus.status;
+        } else if (cachedStatus) {
+          status = cachedStatus.status;
+        } else {
+          return null; // Message not found
+        }
+        
         return {
           messageId,
-          status: cachedMessage.status || 'unknown',
-          source: 'cache',
-          lastChecked: Date.now(),
-          ...cachedMessage
+          status,
+          bridgeStatus,
+          streamsStatus,
+          confirmations: bridgeStatus ? bridgeStatus.confirmations : 0,
+          timestamp: bridgeStatus?.timestamp || streamsStatus?.timestamp || cachedStatus?.timestamp || Date.now()
         };
-      }
-      
-      // If we reach here, the message wasn't found
-      logger.warn(`Message ${messageId} not found in cache or on-chain`);
-      throw new Error(`Message ${messageId} not found`);
+      }, { cacheTTL: 10000 }); // 10 second cache for status
     } catch (error) {
       logger.error(`Error getting message status: ${error.message}`);
       throw error;
@@ -507,88 +329,104 @@ class CrossLayerAggregator {
   }
   
   /**
-   * Get all messages for a user
-   * @param {string} address - User address (IOTA or EVM)
-   * @returns {Promise<Object[]>} Array of messages
+   * Get user messages across all channels
+   * @param {string} address - User address
+   * @returns {Promise<Array>} User messages
    */
   async getUserMessages(address) {
     try {
-      logger.info(`Getting messages for user: ${address}`);
-      
-      const messages = [];
-      
-      // Check bridge contract if available
-      if (this.bridgeContract && ethers.utils.isAddress(address)) {
-        try {
-          const messageIds = await this.bridgeContract.getMessageIds(address);
-          
-          // Get details for each message ID
-          for (const messageId of messageIds) {
-            try {
-              const status = await this.getMessageStatus(messageId);
-              messages.push(status);
-            } catch (statusError) {
-              logger.warn(`Error getting status for message ${messageId}: ${statusError.message}`);
-              // Add basic info
-              messages.push({
-                messageId,
-                status: 'unknown',
-                source: 'bridge',
-                error: statusError.message
-              });
-            }
-          }
-        } catch (bridgeError) {
-          logger.warn(`Error getting messages from bridge: ${bridgeError.message}`);
-        }
+      if (!address) {
+        throw new Error('Address is required');
       }
       
-      // Check Tangle for messages
-      try {
-        // Get all transactions with the CROSS_LAYER_MESSAGE tag
-        const tag = Buffer.from('CROSS_LAYER_MESSAGE').toString('hex');
+      logger.info(`Getting messages for user: ${address}`);
+      
+      // Use caching for better performance
+      const cacheKey = `user-messages-${address}`;
+      
+      return await withCache(cacheKey, async () => {
+        const messages = [];
         
-        // Query for messages with this tag
-        const tangleMessages = await getAddressTransactions(this.client, tag);
-        
-        // Process each message
-        for (const message of tangleMessages) {
+        // Get bridge messages if available
+        if (this.bridge) {
           try {
-            // Parse the message data
-            const messageData = JSON.parse(Buffer.from(message.data, 'hex').toString());
+            const messageIds = await this.bridge.getMessageIds(address);
             
-            // Check if this message is for the specified address
-            if (
-              messageData.targetAddress === address ||
-              messageData.sender === address
-            ) {
-              // Check if this message is already in the results
-              const existing = messages.find(m => m.messageId === messageData.id);
-              
-              if (!existing) {
-                // Add message to results
+            // Get details for each message
+            for (const id of messageIds) {
+              try {
+                const details = await this.bridge.getMessageDetails(id);
+                
+                // Convert to readable format
                 messages.push({
-                  messageId: messageData.id,
-                  blockId: message.blockId,
-                  status: messageData.status || 'unknown',
-                  source: 'tangle',
-                  ...messageData
+                  messageId: id.toString(),
+                  sender: details.sender,
+                  targetAddress: details.targetAddress,
+                  messageType: details.messageType,
+                  status: ['Pending', 'Processed', 'Failed', 'Canceled'][details.status] || 'Unknown',
+                  direction: details.direction === 0 ? 'L2ToL1' : 'L1ToL2',
+                  timestamp: details.timestamp.toNumber() * 1000, // Convert to JS timestamp
+                  payload: details.payload ? ethers.utils.toUtf8String(details.payload) : '',
+                  source: 'bridge'
+                });
+              } catch (detailsError) {
+                logger.error(`Error getting details for message ${id}: ${detailsError.message}`);
+              }
+            }
+          } catch (bridgeError) {
+            logger.error(`Error getting bridge messages: ${bridgeError.message}`);
+          }
+        }
+        
+        // Get streams messages if available
+        if (this.streamsService) {
+          try {
+            const streamsMessages = await this.streamsService.getMessages({
+              filter: {
+                type: 'CROSS_LAYER_MESSAGE',
+                userAddress: address
+              }
+            });
+            
+            // Add streams messages
+            for (const msg of streamsMessages) {
+              // Check if message already exists from bridge
+              const existingIndex = messages.findIndex(m => 
+                m.messageId === msg.messageId || 
+                (m.messageType === msg.messageType && 
+                 m.timestamp === msg.timestamp && 
+                 m.targetAddress === msg.targetAddress)
+              );
+              
+              if (existingIndex >= 0) {
+                // Update existing message with streams info
+                messages[existingIndex].streamsConfirmed = msg.confirmed;
+                messages[existingIndex].streamsTxId = msg.id;
+              } else {
+                // Add as new message
+                messages.push({
+                  messageId: msg.messageId || msg.id,
+                  sender: msg.sender,
+                  targetAddress: msg.targetAddress,
+                  messageType: msg.messageType,
+                  status: msg.confirmed ? 'Confirmed' : 'Pending',
+                  timestamp: msg.timestamp,
+                  payload: msg.payload || msg.content,
+                  source: 'streams',
+                  streamsTxId: msg.id
                 });
               }
             }
-          } catch (parseError) {
-            logger.warn(`Error parsing message data: ${parseError.message}`);
-            // Skip invalid messages
+          } catch (streamsError) {
+            logger.error(`Error getting streams messages: ${streamsError.message}`);
           }
         }
-      } catch (tangleError) {
-        logger.warn(`Error getting messages from Tangle: ${tangleError.message}`);
-      }
-      
-      // Sort messages by timestamp (newest first)
-      messages.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-      
-      return messages;
+        
+        // Sort by timestamp, newest first
+        messages.sort((a, b) => b.timestamp - a.timestamp);
+        
+        return messages;
+      }, { cacheTTL: 60000 }); // 1 minute cache
     } catch (error) {
       logger.error(`Error getting user messages: ${error.message}`);
       throw error;
@@ -596,379 +434,139 @@ class CrossLayerAggregator {
   }
   
   /**
-   * Perform an atomic swap between L1 and L2
-   * @param {Object} params - Swap parameters
-   * @returns {Promise<Object>} Swap result
+   * Get user data from both L1 and L2
+   * @param {string} address - User address
+   * @returns {Promise<Object>} User data from both layers
    */
-  async atomicSwap(params) {
-    return this.circuitBreaker.atomicSwap.execute(async () => {
-      try {
-        logger.info(`Initiating atomic swap: ${JSON.stringify(params)}`);
+  async getUserData(address) {
+    try {
+      if (!address) {
+        throw new Error('Address is required');
+      }
+      
+      logger.info(`Getting cross-layer data for user: ${address}`);
+      
+      // Use caching for better performance
+      const cacheKey = `user-data-${address}`;
+      
+      return await withCache(cacheKey, async () => {
+        // Get messages for activity data
+        const messages = await this.getUserMessages(address);
         
-        // Validate parameters
-        if (!params.amountL1 || !params.recipientL1) {
-          throw new Error('L1 amount and recipient are required');
-        }
-        
-        if (!params.amountL2 || !params.recipientL2) {
-          throw new Error('L2 amount and recipient are required');
-        }
-        
-        if (!params.timelock) {
-          // Default timelock is 1 hour from now
-          params.timelock = Math.floor(Date.now() / 1000) + 3600;
-        }
-        
-        // Generate a unique swap ID
-        const swapContent = JSON.stringify(params) + Date.now().toString();
-        const swapId = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(swapContent));
-        
-        let l1Transaction = null;
-        let l2Transaction = null;
-        
-        // Phase 1: Initialize swap on L2 if bridge contract is available
-        if (this.bridgeContract && this.signer) {
+        // Get L1 data
+        let l1Data = null;
+        if (this.client) {
           try {
-            // Convert amount to wei
-            const amountInWei = ethers.utils.parseEther(params.amountL2.toString());
+            // Derive IOTA address from Ethereum address (simplified)
+            // In a real implementation, this would use a proper derivation
+            const iotaAddress = await this.deriveIotaAddress(address);
             
-            // Send transaction to bridge contract
-            const tx = await this.bridgeContract.atomicSwap(
-              params.recipientL2,
-              amountInWei,
-              params.timelock,
-              { 
-                value: amountInWei, 
-                gasLimit: params.gasLimit || 500000 
-              }
-            );
+            // Get transaction data
+            const txData = await this.client.getAddressOutputs(iotaAddress);
             
-            logger.info(`L2 swap initiated, waiting for confirmation: ${tx.hash}`);
+            l1Data = {
+              address: iotaAddress,
+              transactionCount: txData.length,
+              lastUpdated: Date.now()
+            };
+          } catch (l1Error) {
+            logger.error(`Error getting L1 data: ${l1Error.message}`);
+          }
+        }
+        
+        // Get L2 data
+        let l2Data = null;
+        if (this.evmProvider) {
+          try {
+            // Get basic account data
+            const balance = await this.evmProvider.getBalance(address);
+            const txCount = await this.evmProvider.getTransactionCount(address);
             
-            // Wait for confirmation
-            const receipt = await tx.wait();
-            
-            logger.info(`L2 swap confirmed: ${receipt.transactionHash}`);
-            
-            l2Transaction = {
-              transactionHash: receipt.transactionHash,
-              blockNumber: receipt.blockNumber,
-              status: 'confirmed'
+            l2Data = {
+              address: address,
+              balance: ethers.utils.formatEther(balance),
+              transactionCount: txCount,
+              lastUpdated: Date.now()
             };
           } catch (l2Error) {
-            logger.error(`Error initializing L2 swap: ${l2Error.message}`);
-            throw new Error(`L2 swap failed: ${l2Error.message}`);
+            logger.error(`Error getting L2 data: ${l2Error.message}`);
           }
-        } else {
-          logger.warn('No bridge contract available for L2 swap, skipping L2 phase');
         }
-        
-        // Phase 2: Send IOTA tokens for L1 part of the swap
-        if (this.account) {
-          try {
-            // Send tokens with the swap ID in metadata
-            const result = await sendTokens(
-              this.account,
-              params.amountL1,
-              params.recipientL1,
-              {
-                tag: 'ATOMIC_SWAP',
-                metadata: JSON.stringify({
-                  swapId,
-                  recipientL2: params.recipientL2,
-                  amountL2: params.amountL2,
-                  timelock: params.timelock
-                }),
-                monitor: true
-              }
-            );
-            
-            logger.info(`L1 swap initiated, block ID: ${result.blockId}`);
-            
-            l1Transaction = {
-              blockId: result.blockId,
-              status: 'pending'
-            };
-            
-            // Start monitoring transaction
-            monitorWalletTransaction(this.account, result.blockId, (status) => {
-              if (status.status === 'confirmed') {
-                logger.info(`L1 swap confirmed: ${result.blockId}`);
-                l1Transaction.status = 'confirmed';
-                
-                // If L2 is also confirmed, we can consider the swap complete
-                if (l2Transaction && l2Transaction.status === 'confirmed') {
-                  logger.info(`Atomic swap ${swapId} completed successfully`);
-                  
-                  // Store the completed swap status on Tangle
-                  this.storeSwapStatus(swapId, 'completed');
-                }
-              }
-            });
-          } catch (l1Error) {
-            logger.error(`Error initializing L1 swap: ${l1Error.message}`);
-            
-            // If L2 transaction was successful but L1 failed, we need to cancel the L2 transaction
-            if (l2Transaction && l2Transaction.status === 'confirmed' && this.bridgeContract) {
-              try {
-                logger.info(`Cancelling L2 swap due to L1 failure: ${swapId}`);
-                const tx = await this.bridgeContract.cancelSwap(swapId);
-                await tx.wait();
-                logger.info(`L2 swap cancelled: ${tx.hash}`);
-              } catch (cancelError) {
-                logger.error(`Error cancelling L2 swap: ${cancelError.message}`);
-              }
-            }
-            
-            throw new Error(`L1 swap failed: ${l1Error.message}`);
-          }
-        } else {
-          logger.warn('No account available for L1 swap, skipping L1 phase');
-        }
-        
-        // Store swap info on Tangle for tracking
-        await this.storeSwapStatus(swapId, 'initiated');
         
         return {
-          swapId,
-          l1Transaction,
-          l2Transaction,
-          params,
-          status: 'initiated',
-          timestamp: Date.now()
+          crossLayerEnabled: true,
+          address,
+          l1Data,
+          l2Data,
+          bridgeMessages: messages,
+          messageCount: messages.length,
+          lastActivity: messages.length > 0 ? messages[0].timestamp : null,
+          lastUpdated: Date.now()
         };
-      } catch (error) {
-        logger.error(`Error performing atomic swap: ${error.message}`);
-        throw error;
-      }
-    });
-  }
-  
-  /**
-   * Store swap status on Tangle
-   * @param {string} swapId - Swap ID
-   * @param {string} status - Swap status
-   * @returns {Promise<Object>} Result of storage operation
-   */
-  async storeSwapStatus(swapId, status) {
-    try {
-      // Create swap status object
-      const swapStatus = {
-        swapId,
-        status,
-        timestamp: Date.now()
-      };
-      
-      // Submit to IOTA Tangle as tagged data
-      const blockData = {
-        payload: {
-          type: 1, // Tagged data
-          tag: Buffer.from('ATOMIC_SWAP_STATUS').toString('hex'),
-          data: Buffer.from(JSON.stringify(swapStatus)).toString('hex')
-        }
-      };
-      
-      // Submit block
-      const result = await submitBlock(this.client, blockData);
-      
-      logger.info(`Swap status stored on Tangle, swap ID: ${swapId}, status: ${status}, block ID: ${result.blockId}`);
-      
-      return {
-        ...swapStatus,
-        blockId: result.blockId
-      };
+      }, { cacheTTL: 120000 }); // 2 minute cache
     } catch (error) {
-      logger.error(`Error storing swap status: ${error.message}`);
+      logger.error(`Error getting user data: ${error.message}`);
       throw error;
     }
   }
   
   /**
-   * Get swap status
-   * @param {string} swapId - Swap ID to check
-   * @returns {Promise<Object>} Swap status
+   * Derive IOTA address from Ethereum address
+   * @param {string} ethAddress - Ethereum address
+   * @returns {Promise<string>} IOTA address
    */
-  async getSwapStatus(swapId) {
+  async deriveIotaAddress(ethAddress) {
     try {
-      logger.info(`Getting status for swap: ${swapId}`);
+      // This is a simplified implementation
+      // In a real application, this would use proper derivation
       
-      // Check bridge contract for L2 status if available
-      let l2Status = 'unknown';
+      // For now, we'll mock this by hashing the Ethereum address
+      const hash = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(ethAddress));
+      const addressSeed = hash.slice(0, 32);
       
-      if (this.bridgeContract) {
+      // Request address from client if available
+      if (this.client) {
         try {
-          const statusCode = await this.bridgeContract.getSwapStatus(swapId);
-          
-          // Convert status code to string
-          const statusMap = {
-            0: 'not_found',
-            1: 'pending',
-            2: 'completed',
-            3: 'cancelled',
-            4: 'expired'
-          };
-          
-          l2Status = statusMap[statusCode] || 'unknown';
-          
-          logger.info(`Swap ${swapId} L2 status: ${l2Status}`);
-        } catch (bridgeError) {
-          logger.warn(`Error getting swap L2 status: ${bridgeError.message}`);
+          const seedBuffer = Buffer.from(addressSeed.slice(2), 'hex');
+          const iotaAddress = await this.client.getAddressFromSeed(seedBuffer);
+          return iotaAddress;
+        } catch (clientError) {
+          logger.error(`Error getting address from client: ${clientError.message}`);
         }
       }
       
-      // Check Tangle for latest swap status
-      let l1Status = 'unknown';
-      let statusHistory = [];
+      // Fallback: Generate a mock IOTA address
+      // In production, use proper address generation
+      const network = this.client 
+        ? this.client.getSettings().networkInfo.bech32Hrp 
+        : 'smr';
       
-      try {
-        // Get all transactions with the ATOMIC_SWAP_STATUS tag
-        const tag = Buffer.from('ATOMIC_SWAP_STATUS').toString('hex');
-        
-        // Query for messages with this tag
-        const statusMessages = await getAddressTransactions(this.client, tag);
-        
-        // Process each message to find the latest status
-        for (const message of statusMessages) {
-          try {
-            // Parse the status data
-            const statusData = JSON.parse(Buffer.from(message.data, 'hex').toString());
-            
-            // Check if this status is for the specified swap
-            if (statusData.swapId === swapId) {
-              // Add to history
-              statusHistory.push({
-                ...statusData,
-                blockId: message.blockId
-              });
-            }
-          } catch (parseError) {
-            logger.warn(`Error parsing swap status data: ${parseError.message}`);
-            // Skip invalid messages
-          }
-        }
-        
-        // Sort history by timestamp (newest first)
-        statusHistory.sort((a, b) => b.timestamp - a.timestamp);
-        
-        // Get latest status
-        if (statusHistory.length > 0) {
-          l1Status = statusHistory[0].status;
-          logger.info(`Swap ${swapId} L1 status: ${l1Status}`);
-        }
-      } catch (tangleError) {
-        logger.warn(`Error getting swap L1 status: ${tangleError.message}`);
-      }
-      
-      // Determine overall status
-      let overallStatus = 'unknown';
-      
-      if (l1Status === 'completed' && l2Status === 'completed') {
-        overallStatus = 'completed';
-      } else if (l1Status === 'cancelled' || l2Status === 'cancelled') {
-        overallStatus = 'cancelled';
-      } else if (l1Status === 'expired' || l2Status === 'expired') {
-        overallStatus = 'expired';
-      } else if (l1Status === 'initiated' || l2Status === 'pending') {
-        overallStatus = 'pending';
-      }
-      
-      return {
-        swapId,
-        status: overallStatus,
-        l1Status,
-        l2Status,
-        statusHistory,
-        lastChecked: Date.now()
-      };
+      return `${network}1${hash.slice(2, 58)}`;
     } catch (error) {
-      logger.error(`Error getting swap status: ${error.message}`);
-      throw error;
-    }
-  }
-  
-  /**
-   * Synchronize data between L1 and L2
-   * @param {Object} data - Data to synchronize
-   * @param {Object} options - Synchronization options
-   * @returns {Promise<Object>} Synchronization result
-   */
-  async syncData(data, options = {}) {
-    try {
-      logger.info(`Synchronizing data between L1 and L2: ${JSON.stringify(data)}`);
-      
-      // Generate a unique sync ID
-      const syncId = this.generateMessageId(data);
-      
-      // Create messages for both directions
-      const messages = [];
-      
-      // L1 to L2 message
-      if (options.l2Address) {
-        const l1ToL2Message = await this.sendMessageToL2({
-          targetAddress: options.l2Address,
-          payload: {
-            type: 'SYNC_DATA',
-            data,
-            syncId,
-            timestamp: Date.now()
-          }
-        });
-        
-        messages.push({
-          direction: 'L1ToL2',
-          messageId: l1ToL2Message.messageId,
-          status: l1ToL2Message.status
-        });
-      }
-      
-      // L2 to L1 message
-      if (options.l1Address) {
-        const l2ToL1Message = await this.sendMessageToL1({
-          targetAddress: options.l1Address,
-          payload: {
-            type: 'SYNC_DATA',
-            data,
-            syncId,
-            timestamp: Date.now()
-          }
-        });
-        
-        messages.push({
-          direction: 'L2ToL1',
-          messageId: l2ToL1Message.messageId,
-          status: l2ToL1Message.status
-        });
-      }
-      
-      return {
-        syncId,
-        messages,
-        data,
-        timestamp: Date.now()
-      };
-    } catch (error) {
-      logger.error(`Error synchronizing data: ${error.message}`);
+      logger.error(`Error deriving IOTA address: ${error.message}`);
       throw error;
     }
   }
 }
 
 /**
- * Create a Cross-Layer Aggregator instance
+ * Create a Cross-Layer Aggregator
  * @param {Object} client - IOTA client
- * @param {Object} options - Configuration options
- * @returns {Promise<CrossLayerAggregator>} The Cross-Layer Aggregator instance
+ * @param {Object} options - Aggregator options
+ * @returns {Promise<CrossLayerAggregator>} The aggregator instance
  */
 async function createAggregator(client, options = {}) {
   try {
-    logger.info('Creating Cross-Layer Aggregator');
+    logger.info('Creating Cross-Layer Aggregator...');
     
-    const aggregator = new CrossLayerAggregator(client, options);
+    // Combine options with client
+    const aggregatorOptions = {
+      ...options,
+      client
+    };
     
-    // Initialize bridge if address is provided
-    if (options.bridgeAddress) {
-      await aggregator.setBridgeAddress(options.bridgeAddress);
-    }
+    // Create aggregator
+    const aggregator = new CrossLayerAggregator(aggregatorOptions);
     
     return aggregator;
   } catch (error) {
