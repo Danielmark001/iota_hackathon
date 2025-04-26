@@ -558,30 +558,86 @@ if (process.env.PRIVATE_KEY) {
 
 // API Routes
 
-// Health check endpoint
+// Enhanced Health check endpoint with detailed IOTA network monitoring
 app.get('/health', async (req, res) => {
   try {
-    // Check IOTA connection
+    // Check IOTA connection with detailed diagnostics
     let iotaStatus = 'disconnected';
+    let nodeDetails = [];
+    let walletStatus = { status: 'disconnected' };
+    let latency = null;
+    
     if (iotaClient) {
       try {
-        const networkInfo = await getNetworkInfo(iotaClient);
+        const startTime = Date.now();
+        const networkInfo = await getNetworkInfo(iotaClient, iotaNodeManager);
+        const endTime = Date.now();
+        latency = endTime - startTime;
+        
         iotaStatus = networkInfo.nodeInfo.status.isHealthy ? 'healthy' : 'unhealthy';
+        
+        // Get status of all configured nodes
+        if (iotaNodeManager) {
+          const nodes = iotaNodeManager.nodes || [];
+          nodeDetails = nodes.map(node => ({
+            url: node.url,
+            healthy: node.healthy,
+            responseTime: node.responseTime,
+            lastChecked: new Date(node.lastCheckTime).toISOString(),
+            failureCount: node.failureCount
+          }));
+        }
       } catch (error) {
         iotaStatus = 'error';
+        logger.error(`Health check IOTA connection error: ${error.message}`);
       }
     }
     
+    // Check wallet status
+    if (iotaWallet && iotaAccount) {
+      try {
+        const balance = await getBalance(iotaAccount, { syncFirst: false });
+        walletStatus = {
+          status: 'connected',
+          balance: balance.formatted ? balance.formatted.available : '0',
+          lastSync: new Date().toISOString()
+        };
+      } catch (error) {
+        walletStatus = { status: 'error', error: error.message };
+        logger.error(`Health check wallet error: ${error.message}`);
+      }
+    }
+    
+    // Check circuit breakers status
+    const circuitStatus = {};
+    if (circuitBreakers) {
+      for (const [name, breaker] of Object.entries(circuitBreakers)) {
+        circuitStatus[name] = {
+          state: breaker.getState(),
+          failureCount: breaker.stats ? breaker.stats.failures : 0,
+          lastFailure: breaker.stats && breaker.stats.lastFailureTime ? new Date(breaker.stats.lastFailureTime).toISOString() : null
+        };
+      }
+    }
+    
+    // Enhanced response with detailed monitoring information
     res.status(200).json({ 
       status: 'ok', 
       timestamp: Date.now(),
       iota: {
         status: iotaStatus,
         network: process.env.IOTA_NETWORK || 'testnet',
-        wallet: iotaWallet ? 'connected' : 'disconnected'
+        wallet: walletStatus,
+        latency: latency,
+        nodes: nodeDetails,
+        circuitBreakers: circuitStatus,
+        streams: iotaStreamsService ? 'initialized' : 'not_initialized',
+        identity: iotaIdentityService ? 'initialized' : 'not_initialized',
+        crossLayer: iotaCrossLayerAggregator ? 'initialized' : 'not_initialized'
       }
     });
   } catch (error) {
+    logger.error(`Health check error: ${error.message}`);
     res.status(500).json({ status: 'error', message: error.message });
   }
 });
@@ -1016,6 +1072,46 @@ app.post('/api/iota/submit', validateRequest(['data']), async (req, res) => {
     
     res.status(500).json({ 
       error: 'Error submitting data', 
+      message: error.message 
+    });
+  }
+});
+
+/**
+ * Get circuit breaker status
+ * @route GET /api/iota/circuit-status
+ * @returns {object} 200 - Circuit breaker status
+ * @returns {object} 500 - Server error
+ * @returns {object} 503 - IOTA client not initialized
+ */
+app.get('/api/iota/circuit-status', cacheMiddleware(10), async (req, res) => {
+  try {
+    if (!iotaClient) {
+      return res.status(503).json({ 
+        error: 'IOTA client not initialized',
+        details: 'IOTA services are currently unavailable. Please try again later.'
+      });
+    }
+    
+    logger.info('Getting circuit breaker status');
+    
+    // Get circuit breaker status from available breakers
+    const formattedStatus = {};
+    
+    if (circuitBreakers) {
+      for (const [name, breaker] of Object.entries(circuitBreakers)) {
+        formattedStatus[name] = {
+          state: breaker.getState(),
+          ...breaker.getStats()
+        };
+      }
+    }
+    
+    res.json(formattedStatus);
+  } catch (error) {
+    logger.error(`Error getting circuit breaker status: ${error.message}`);
+    res.status(500).json({ 
+      error: 'Error getting circuit breaker status', 
       message: error.message 
     });
   }
@@ -1636,7 +1732,7 @@ app.get('/api/iota/streams/messages/:channelId', authenticate, async (req, res) 
     }
 });
 
-// Bridge messages endpoint - now using real IOTA bridge when available
+// Bridge messages endpoint - using real IOTA bridge
 app.get('/api/bridge/messages/:address', async (req, res) => {
   try {
     const { address } = req.params;
@@ -1646,41 +1742,82 @@ app.get('/api/bridge/messages/:address', async (req, res) => {
       return res.status(400).json({ error: 'Invalid Ethereum address' });
     }
     
-    // Try to fetch real bridge messages from the contract
-    let messages = [];
-    
-    if (aiIntegration.zkBridge && typeof aiIntegration.zkBridge.getMessageIds === 'function') {
-      try {
-        // Get message IDs for this address
-        const messageIds = await aiIntegration.zkBridge.getMessageIds(address);
-        
-        // Fetch detailed information for each message
-        const messagePromises = messageIds.map(async (id) => {
-          const details = await aiIntegration.zkBridge.getMessageDetails(id);
-          return {
-            messageId: id,
-            messageType: details.messageType,
-            status: ['Pending', 'Processed', 'Failed', 'Canceled'][details.status], // Convert enum to string
-            timestamp: details.timestamp.toNumber() * 1000, // Convert to JS timestamp
-            sender: details.sender,
-            targetAddress: details.targetAddress,
-            direction: details.direction === 0 ? 'L2ToL1' : 'L1ToL2'
-          };
-        });
-        
-        messages = await Promise.all(messagePromises);
-        
-        // Sort by timestamp, newest first
-        messages.sort((a, b) => b.timestamp - a.timestamp);
-      } catch (bridgeError) {
-        logger.warn('Error fetching from bridge, using fallback data:', bridgeError);
-        // Fall back to simulated data
-        messages = generateSimulatedBridgeMessages(address);
-      }
-    } else {
-      // Fall back to simulated data
-      messages = generateSimulatedBridgeMessages(address);
+    // Verify that the required components are initialized
+    if (!aiIntegration.zkBridge || typeof aiIntegration.zkBridge.getMessageIds !== 'function') {
+      return res.status(503).json({ 
+        error: 'Bridge service not initialized',
+        details: 'Cross-layer bridge services are currently unavailable. Please try again later.'
+      });
     }
+    
+    // Get message IDs for this address with retry logic
+    let messageIds;
+    try {
+      // Use withExponentialBackoff for resilience
+      messageIds = await withExponentialBackoff(async () => {
+        return await aiIntegration.zkBridge.getMessageIds(address);
+      }, {
+        maxRetries: 3,
+        initialDelayMs: 1000
+      });
+    } catch (error) {
+      logger.error(`Error fetching message IDs for ${address}: ${error.message}`);
+      return res.status(500).json({
+        error: 'Error fetching message IDs',
+        message: error.message
+      });
+    }
+    
+    // If no messages found, return empty array
+    if (!messageIds || messageIds.length === 0) {
+      return res.json({ messages: [], count: 0 });
+    }
+    
+    // Fetch detailed information for each message with retries
+    const fetchMessageDetails = async (id, retries = 3) => {
+      try {
+        const details = await aiIntegration.zkBridge.getMessageDetails(id);
+        return {
+          messageId: id,
+          messageType: details.messageType,
+          status: ['Pending', 'Processed', 'Failed', 'Canceled'][details.status], // Convert enum to string
+          timestamp: details.timestamp.toNumber() * 1000, // Convert to JS timestamp
+          sender: details.sender,
+          targetAddress: details.targetAddress,
+          direction: details.direction === 0 ? 'L2ToL1' : 'L1ToL2'
+        };
+      } catch (error) {
+        if (retries > 0) {
+          // Wait a bit and retry
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          return fetchMessageDetails(id, retries - 1);
+        }
+        // If all retries fail, throw the error
+        throw error;
+      }
+    };
+    
+    // Fetch details with proper error handling
+    const messages = [];
+    for (const id of messageIds) {
+      try {
+        const message = await fetchMessageDetails(id);
+        messages.push(message);
+      } catch (error) {
+        logger.error(`Error fetching details for message ${id}: ${error.message}`);
+        // Add an error message instead of skipping completely
+        messages.push({
+          messageId: id,
+          messageType: 'UNKNOWN',
+          status: 'Error',
+          error: error.message,
+          timestamp: Date.now()
+        });
+      }
+    }
+    
+    // Sort by timestamp, newest first
+    messages.sort((a, b) => b.timestamp - a.timestamp);
     
     res.json({ messages, count: messages.length });
   } catch (error) {
@@ -1688,36 +1825,6 @@ app.get('/api/bridge/messages/:address', async (req, res) => {
     res.status(500).json({ error: 'Error fetching bridge messages', message: error.message });
   }
 });
-
-// Helper function to generate simulated bridge messages
-function generateSimulatedBridgeMessages(address) {
-  const messageTypes = ['RISK_SCORE_UPDATE', 'COLLATERAL_CHANGE', 'CROSS_CHAIN_TRANSFER', 'IDENTITY_VERIFICATION'];
-  const statuses = ['Pending', 'Processed', 'Failed'];
-  
-  const messages = [];
-  const count = 3 + Math.floor(Math.random() * 5);
-  
-  for (let i = 0; i < count; i++) {
-    const messageType = messageTypes[Math.floor(Math.random() * messageTypes.length)];
-    const status = statuses[Math.floor(Math.random() * statuses.length)];
-    const timestamp = Date.now() - Math.floor(Math.random() * 7 * 86400 * 1000); // Up to 7 days ago
-    
-    messages.push({
-      messageId: `0x${Math.random().toString(16).slice(2, 10)}`,
-      messageType,
-      status,
-      timestamp,
-      sender: address,
-      targetAddress: `0x${Math.random().toString(16).slice(2, 42)}`,
-      direction: Math.random() > 0.5 ? 'L2ToL1' : 'L1ToL2'
-    });
-  }
-  
-  // Sort by timestamp, newest first
-  messages.sort((a, b) => b.timestamp - a.timestamp);
-  
-  return messages;
-}
 
 /**
  * Send a cross-layer message from L2 to L1

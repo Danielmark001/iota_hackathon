@@ -1,551 +1,521 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box,
-  Typography,
-  Paper,
-  Divider,
-  Grid,
   Card,
   CardContent,
   CardHeader,
-  Tabs,
+  CircularProgress,
+  Divider,
+  Grid,
   Tab,
-  Alert,
+  Tabs,
+  Typography,
   Button,
+  Paper,
+  Alert,
   Chip,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
-  TableRow,
-  CircularProgress,
-  Tooltip,
-  IconButton,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  Link
+  TableRow
 } from '@mui/material';
 import {
-  SyncAlt,
-  BarChart,
-  OfflineBolt,
-  AccountBalanceWallet,
-  AttachMoney,
-  ThumbUp,
-  ThumbDown,
-  Refresh,
-  Info,
-  ArrowDropUp,
-  ArrowDropDown,
-  SwapHoriz,
-  MoreHoriz,
-  OpenInNew
+  Refresh as RefreshIcon,
+  CompareArrows as SwapIcon,
+  Send as SendIcon,
+  AccountBalance as AccountIcon,
+  Link as LinkIcon
 } from '@mui/icons-material';
-
-// Contexts
-import { useIoTA } from '../../context/IoTAContext';
-import { useWeb3 } from '../../context/Web3Context';
-import { useSnackbar } from '../../context/SnackbarContext';
-
-// Services
-import apiService from '../../services/apiService';
+import axios from 'axios';
+import { useWeb3React } from '@web3-react/core';
+import { useIOTAContext } from '../../contexts/IOTAContext';
 
 /**
- * CrossLayerDashboard Component
+ * Cross-Layer Dashboard Component
  * 
- * Displays a unified dashboard showing data from both IOTA L1 (Move) and L2 (EVM),
- * including transaction statuses, risk assessments, and liquidation events.
+ * This component displays a unified dashboard for positions and transactions
+ * on both IOTA Layer 1 (Tangle) and Layer 2 (EVM) networks.
  */
-const CrossLayerDashboard = () => {
-  const { isConnected: isIotaConnected, address: iotaAddress } = useIoTA();
-  const { currentAccount, chainId, isConnected: isEvmConnected } = useWeb3();
-  const { showSnackbar } = useSnackbar();
+function CrossLayerDashboard() {
+  const [activeTab, setActiveTab] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [l1Data, setL1Data] = useState(null);
+  const [l2Data, setL2Data] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [lastUpdated, setLastUpdated] = useState(null);
   
-  // State for dashboard data
-  const [loading, setLoading] = useState(false);
-  const [tabValue, setTabValue] = useState(0);
-  const [transactions, setTransactions] = useState([]);
-  const [bridgeMessages, setBridgeMessages] = useState([]);
-  const [liquidationEvents, setLiquidationEvents] = useState([]);
-  const [crossLayerStats, setCrossLayerStats] = useState({
-    l1TotalValue: 0,
-    l2TotalValue: 0,
-    crossLayerTransactions: 0,
-    riskAssessmentEvents: 0
-  });
+  // Web3 context for EVM connection
+  const { active: web3Active, account, library } = useWeb3React();
   
-  // Load dashboard data
-  useEffect(() => {
-    if ((isIotaConnected && iotaAddress) || (isEvmConnected && currentAccount)) {
-      loadDashboardData();
-    }
-  }, [isIotaConnected, iotaAddress, isEvmConnected, currentAccount]);
+  // IOTA context for L1 connection
+  const { connected: iotaConnected, address: iotaAddress, api: iotaApi } = useIOTAContext();
   
-  // Load all dashboard data
-  const loadDashboardData = async () => {
+  // Handle tab change
+  const handleTabChange = (event, newValue) => {
+    setActiveTab(newValue);
+  };
+  
+  // Fetch all data
+  const fetchData = async () => {
     setLoading(true);
+    setError(null);
+    
     try {
-      // Get cross-layer transactions
-      const txData = await fetchCrossLayerTransactions();
-      setTransactions(txData);
+      // Prepare requests array
+      const requests = [];
       
-      // Get bridge messages
-      if (isEvmConnected && currentAccount) {
-        const messages = await fetchBridgeMessages(currentAccount);
-        setBridgeMessages(messages);
+      // L1 data request (only if IOTA is connected)
+      if (iotaConnected && iotaAddress) {
+        requests.push(
+          axios.get(`/api/iota/account/${iotaAddress}`)
+            .then(response => setL1Data(response.data))
+            .catch(error => {
+              console.error('Error fetching L1 data:', error);
+              setError(error.response?.data?.message || 'Failed to fetch L1 data');
+            })
+        );
       }
       
-      // Get liquidation events
-      const liquidations = await fetchLiquidationEvents();
-      setLiquidationEvents(liquidations);
+      // L2 data request (only if Web3 is connected)
+      if (web3Active && account) {
+        requests.push(
+          axios.get(`/api/user/${account}`)
+            .then(response => setL2Data(response.data))
+            .catch(error => {
+              console.error('Error fetching L2 data:', error);
+              setError(error.response?.data?.message || 'Failed to fetch L2 data');
+            })
+        );
+      }
       
-      // Get overall stats
-      const stats = await fetchCrossLayerStats();
-      setCrossLayerStats(stats);
+      // Cross-layer messages request
+      // Try L2 address first, fallback to L1 if not available
+      const addressForMessages = account || iotaAddress;
+      if (addressForMessages) {
+        requests.push(
+          axios.get(`/api/cross-layer/messages/${addressForMessages}`)
+            .then(response => setMessages(response.data.messages || []))
+            .catch(error => {
+              console.error('Error fetching cross-layer messages:', error);
+              // Don't set main error for this, as it's not critical
+            })
+        );
+      }
+      
+      // Wait for all requests to complete
+      await Promise.all(requests);
+      
+      // Update last updated timestamp
+      setLastUpdated(new Date());
     } catch (error) {
-      console.error('Error loading dashboard data:', error);
-      showSnackbar('Failed to load cross-layer data', 'error');
+      console.error('Error fetching data:', error);
+      setError('Failed to fetch data. Please try again later.');
     } finally {
       setLoading(false);
     }
   };
   
-  // Fetch cross-layer transactions
-  const fetchCrossLayerTransactions = async () => {
-    try {
-      let address = '';
-      
-      // Determine which address to use
-      if (isEvmConnected && currentAccount) {
-        address = currentAccount;
-      } else if (isIotaConnected && iotaAddress) {
-        address = iotaAddress;
-      }
-      
-      if (address) {
-        const response = await apiService.getCrossLayerTransactions(address);
-        return response.transactions || [];
-      }
-      
-      return [];
-    } catch (error) {
-      console.error('Error fetching cross-layer transactions:', error);
-      return [];
-    }
+  // Fetch data on component mount and when addresses change
+  useEffect(() => {
+    fetchData();
+    
+    // Set up refresh interval
+    const intervalId = setInterval(() => {
+      fetchData();
+    }, 30000); // Refresh every 30 seconds
+    
+    return () => clearInterval(intervalId);
+  }, [account, iotaAddress]);
+  
+  // Format date for display
+  const formatDate = (timestamp) => {
+    if (!timestamp) return 'N/A';
+    
+    const date = new Date(timestamp);
+    return date.toLocaleString();
   };
   
-  // Fetch bridge messages
-  const fetchBridgeMessages = async (address) => {
-    try {
-      const response = await apiService.getBridgeMessages(address);
-      return response.messages || [];
-    } catch (error) {
-      console.error('Error fetching bridge messages:', error);
-      return [];
-    }
-  };
-  
-  // Fetch liquidation events
-  const fetchLiquidationEvents = async () => {
-    try {
-      const response = await apiService.getLiquidationEvents();
-      return response.events || [];
-    } catch (error) {
-      console.error('Error fetching liquidation events:', error);
-      return [];
-    }
-  };
-  
-  // Fetch cross-layer stats
-  const fetchCrossLayerStats = async () => {
-    try {
-      const response = await apiService.getCrossLayerStats();
-      return response || {
-        l1TotalValue: 0,
-        l2TotalValue: 0,
-        crossLayerTransactions: 0,
-        riskAssessmentEvents: 0
-      };
-    } catch (error) {
-      console.error('Error fetching cross-layer stats:', error);
-      return {
-        l1TotalValue: 0,
-        l2TotalValue: 0,
-        crossLayerTransactions: 0,
-        riskAssessmentEvents: 0
-      };
-    }
-  };
-  
-  // Handle tab change
-  const handleTabChange = (event, newValue) => {
-    setTabValue(newValue);
-  };
-  
-  // Refresh dashboard data
-  const handleRefresh = () => {
-    loadDashboardData();
-  };
-  
-  // Format address for display
-  const formatAddress = (address) => {
-    if (!address) return '';
-    return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
-  };
-  
-  // Get transaction status chip
-  const getStatusChip = (status) => {
-    switch (status) {
-      case 'Confirmed':
-      case 'Processed':
-        return <Chip size="small" color="success" label={status} icon={<ThumbUp sx={{ fontSize: 16 }} />} />;
-      case 'Failed':
-        return <Chip size="small" color="error" label={status} icon={<ThumbDown sx={{ fontSize: 16 }} />} />;
-      case 'Pending':
-        return <Chip size="small" color="warning" label={status} icon={<MoreHoriz sx={{ fontSize: 16 }} />} />;
+  // Format status for display
+  const getStatusColor = (status) => {
+    switch (status?.toLowerCase()) {
+      case 'confirmed':
+      case 'completed':
+        return 'success';
+      case 'pending':
+      case 'processing':
+        return 'warning';
+      case 'failed':
+      case 'rejected':
+      case 'conflicting':
+        return 'error';
       default:
-        return <Chip size="small" color="default" label={status} />;
+        return 'default';
     }
   };
   
-  // Get layer badge
-  const getLayerBadge = (layer) => {
-    switch (layer) {
-      case 'L1':
-        return <Chip size="small" color="primary" label="IOTA L1" />;
-      case 'L2':
-        return <Chip size="small" color="secondary" label="IOTA EVM" />;
-      case 'L1ToL2':
-        return <Chip size="small" label="L1 → L2" icon={<SwapHoriz sx={{ fontSize: 16 }} />} />;
-      case 'L2ToL1':
-        return <Chip size="small" label="L2 → L1" icon={<SwapHoriz sx={{ fontSize: 16 }} />} />;
-      default:
-        return <Chip size="small" label={layer} />;
-    }
-  };
-  
-  // Top Stats
-  const TopStats = () => (
-    <Grid container spacing={3}>
-      <Grid item xs={12} md={6} lg={3}>
-        <Card>
-          <CardContent>
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <AccountBalanceWallet color="primary" sx={{ fontSize: 40, mr: 2 }} />
-              <Box>
-                <Typography variant="h5" component="div">
-                  {crossLayerStats.l2TotalValue.toLocaleString()} SMR
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Total Value on L2 (EVM)
-                </Typography>
-              </Box>
-            </Box>
-          </CardContent>
-        </Card>
-      </Grid>
-      <Grid item xs={12} md={6} lg={3}>
-        <Card>
-          <CardContent>
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <OfflineBolt color="secondary" sx={{ fontSize: 40, mr: 2 }} />
-              <Box>
-                <Typography variant="h5" component="div">
-                  {crossLayerStats.l1TotalValue.toLocaleString()} SMR
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Total Value on L1 (Move)
-                </Typography>
-              </Box>
-            </Box>
-          </CardContent>
-        </Card>
-      </Grid>
-      <Grid item xs={12} md={6} lg={3}>
-        <Card>
-          <CardContent>
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <SyncAlt color="success" sx={{ fontSize: 40, mr: 2 }} />
-              <Box>
-                <Typography variant="h5" component="div">
-                  {crossLayerStats.crossLayerTransactions.toLocaleString()}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Cross-Layer Transactions
-                </Typography>
-              </Box>
-            </Box>
-          </CardContent>
-        </Card>
-      </Grid>
-      <Grid item xs={12} md={6} lg={3}>
-        <Card>
-          <CardContent>
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <BarChart color="warning" sx={{ fontSize: 40, mr: 2 }} />
-              <Box>
-                <Typography variant="h5" component="div">
-                  {crossLayerStats.riskAssessmentEvents.toLocaleString()}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Risk Assessment Events
-                </Typography>
-              </Box>
-            </Box>
-          </CardContent>
-        </Card>
-      </Grid>
-    </Grid>
-  );
-  
-  // Transactions Tab
-  const TransactionsTab = () => (
-    <Box>
-      <Typography variant="h6" gutterBottom>
-        Cross-Layer Transactions
-      </Typography>
-      <Typography variant="body2" color="text.secondary" paragraph>
-        View transactions that move between IOTA L1 (Move) and L2 (EVM) layers.
-      </Typography>
-      
-      {transactions.length > 0 ? (
-        <TableContainer component={Paper} variant="outlined">
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Transaction ID</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell>From</TableCell>
-                <TableCell>To</TableCell>
-                <TableCell align="right">Amount</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Timestamp</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {transactions.map((tx) => (
-                <TableRow key={tx.id}>
-                  <TableCell>
-                    <Tooltip title={tx.id}>
-                      <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                        {tx.id.substring(0, 10)}...
-                      </Typography>
-                    </Tooltip>
-                  </TableCell>
-                  <TableCell>{getLayerBadge(tx.type || tx.direction)}</TableCell>
-                  <TableCell>{formatAddress(tx.from || tx.sender)}</TableCell>
-                  <TableCell>{formatAddress(tx.to || tx.recipient)}</TableCell>
-                  <TableCell align="right">{parseFloat(tx.amount).toFixed(4)} SMR</TableCell>
-                  <TableCell>{getStatusChip(tx.status)}</TableCell>
-                  <TableCell>
-                    <Tooltip title={new Date(tx.timestamp).toLocaleString()}>
-                      <Typography variant="body2">
-                        {new Date(tx.timestamp).toLocaleDateString()}
-                      </Typography>
-                    </Tooltip>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      ) : (
-        <Alert severity="info">
-          <Typography variant="body2">
-            No cross-layer transactions found. Transactions between L1 and L2 will appear here.
-          </Typography>
-        </Alert>
-      )}
-    </Box>
-  );
-  
-  // Bridge Messages Tab
-  const BridgeMessagesTab = () => (
-    <Box>
-      <Typography variant="h6" gutterBottom>
-        Bridge Messages
-      </Typography>
-      <Typography variant="body2" color="text.secondary" paragraph>
-        Messages sent between IOTA L1 and L2 through the cross-layer bridge.
-      </Typography>
-      
-      {bridgeMessages.length > 0 ? (
-        <TableContainer component={Paper} variant="outlined">
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Message ID</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell>Direction</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Timestamp</TableCell>
-                <TableCell>Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {bridgeMessages.map((msg) => (
-                <TableRow key={msg.messageId}>
-                  <TableCell>
-                    <Tooltip title={msg.messageId}>
-                      <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                        {msg.messageId.substring(0, 10)}...
-                      </Typography>
-                    </Tooltip>
-                  </TableCell>
-                  <TableCell>{msg.messageType}</TableCell>
-                  <TableCell>{getLayerBadge(msg.direction)}</TableCell>
-                  <TableCell>{getStatusChip(msg.status)}</TableCell>
-                  <TableCell>
-                    <Tooltip title={new Date(msg.timestamp).toLocaleString()}>
-                      <Typography variant="body2">
-                        {new Date(msg.timestamp).toLocaleDateString()}
-                      </Typography>
-                    </Tooltip>
-                  </TableCell>
-                  <TableCell>
-                    <Tooltip title="View details">
-                      <IconButton size="small" component={Link} href={`/bridge/message/${msg.messageId}`}>
-                        <OpenInNew fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      ) : (
-        <Alert severity="info">
-          <Typography variant="body2">
-            No bridge messages found. Messages between L1 and L2 will appear here.
-          </Typography>
-        </Alert>
-      )}
-    </Box>
-  );
-  
-  // Liquidation Events Tab
-  const LiquidationEventsTab = () => (
-    <Box>
-      <Typography variant="h6" gutterBottom>
-        Liquidation Events
-      </Typography>
-      <Typography variant="body2" color="text.secondary" paragraph>
-        Monitor liquidation events across both L1 and L2 layers.
-      </Typography>
-      
-      {liquidationEvents.length > 0 ? (
-        <TableContainer component={Paper} variant="outlined">
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Event ID</TableCell>
-                <TableCell>Layer</TableCell>
-                <TableCell>Borrower</TableCell>
-                <TableCell align="right">Collateral Amount</TableCell>
-                <TableCell align="right">Debt Amount</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Timestamp</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {liquidationEvents.map((event) => (
-                <TableRow key={event.id}>
-                  <TableCell>
-                    <Tooltip title={event.id}>
-                      <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                        {event.id.substring(0, 10)}...
-                      </Typography>
-                    </Tooltip>
-                  </TableCell>
-                  <TableCell>{getLayerBadge(event.layer)}</TableCell>
-                  <TableCell>{formatAddress(event.borrower)}</TableCell>
-                  <TableCell align="right">{parseFloat(event.collateralAmount).toFixed(4)} SMR</TableCell>
-                  <TableCell align="right">{parseFloat(event.debtAmount).toFixed(4)} SMR</TableCell>
-                  <TableCell>{getStatusChip(event.status)}</TableCell>
-                  <TableCell>
-                    <Tooltip title={new Date(event.timestamp).toLocaleString()}>
-                      <Typography variant="body2">
-                        {new Date(event.timestamp).toLocaleDateString()}
-                      </Typography>
-                    </Tooltip>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      ) : (
-        <Alert severity="info">
-          <Typography variant="body2">
-            No liquidation events found. Active liquidations will appear here.
-          </Typography>
-        </Alert>
-      )}
-    </Box>
-  );
+  // Render loading state
+  if (loading && !l1Data && !l2Data) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="300px">
+        <CircularProgress />
+      </Box>
+    );
+  }
   
   return (
-    <Box sx={{ width: '100%' }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h5" component="h2">
-          Cross-Layer Dashboard
-        </Typography>
-        <Button 
-          startIcon={loading ? <CircularProgress size={20} /> : <Refresh />}
-          onClick={handleRefresh}
-          disabled={loading}
-        >
-          Refresh
-        </Button>
-      </Box>
-      
-      {!isIotaConnected && !isEvmConnected ? (
-        <Alert severity="warning" sx={{ mb: 3 }}>
-          <Typography variant="body1">
-            Please connect at least one wallet (IOTA or EVM) to view cross-layer data.
-          </Typography>
-        </Alert>
-      ) : (
-        <>
-          <TopStats />
+    <Box>
+      <Card>
+        <CardHeader 
+          title="Cross-Layer Dashboard" 
+          subheader={`View your positions across IOTA L1 and L2 networks${lastUpdated ? ` • Updated ${formatDate(lastUpdated)}` : ''}`}
+          action={
+            <Button 
+              startIcon={<RefreshIcon />} 
+              onClick={fetchData}
+              disabled={loading}
+            >
+              Refresh
+            </Button>
+          }
+        />
+        
+        {error && (
+          <Alert severity="error" sx={{ mx: 2, mb: 2 }}>
+            {error}
+          </Alert>
+        )}
+        
+        <CardContent>
+          {/* Connection Status */}
+          <Paper sx={{ p: 2, mb: 3 }}>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={6}>
+                <Box display="flex" alignItems="center">
+                  <AccountIcon color={iotaConnected ? "success" : "disabled"} sx={{ mr: 1 }} />
+                  <Box>
+                    <Typography variant="subtitle2">
+                      IOTA L1 (Tangle) {iotaConnected ? "Connected" : "Not Connected"}
+                    </Typography>
+                    {iotaConnected && iotaAddress && (
+                      <Typography variant="body2" color="text.secondary">
+                        {iotaAddress.substring(0, 10)}...{iotaAddress.substring(iotaAddress.length - 10)}
+                      </Typography>
+                    )}
+                  </Box>
+                </Box>
+              </Grid>
+              
+              <Grid item xs={12} md={6}>
+                <Box display="flex" alignItems="center">
+                  <AccountIcon color={web3Active ? "success" : "disabled"} sx={{ mr: 1 }} />
+                  <Box>
+                    <Typography variant="subtitle2">
+                      IOTA L2 (EVM) {web3Active ? "Connected" : "Not Connected"}
+                    </Typography>
+                    {web3Active && account && (
+                      <Typography variant="body2" color="text.secondary">
+                        {account.substring(0, 6)}...{account.substring(account.length - 4)}
+                      </Typography>
+                    )}
+                  </Box>
+                </Box>
+              </Grid>
+            </Grid>
+          </Paper>
           
-          <Paper sx={{ mt: 3 }}>
-            <Tabs
-              value={tabValue}
+          {/* Dashboard Content Tabs */}
+          <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+            <Tabs 
+              value={activeTab} 
               onChange={handleTabChange}
-              indicatorColor="primary"
-              textColor="primary"
               variant="fullWidth"
             >
-              <Tab label="Transactions" icon={<SwapHoriz />} iconPosition="start" />
-              <Tab label="Bridge Messages" icon={<SyncAlt />} iconPosition="start" />
-              <Tab label="Liquidations" icon={<AttachMoney />} iconPosition="start" />
+              <Tab label="Overview" />
+              <Tab label="Cross-Layer Messages" />
+              <Tab label="Atomic Swaps" />
             </Tabs>
-            
-            <Divider />
-            
-            <Box sx={{ p: 3 }}>
-              {loading ? (
-                <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-                  <CircularProgress />
-                </Box>
-              ) : (
-                <>
-                  {tabValue === 0 && <TransactionsTab />}
-                  {tabValue === 1 && <BridgeMessagesTab />}
-                  {tabValue === 2 && <LiquidationEventsTab />}
-                </>
-              )}
-            </Box>
-          </Paper>
-        </>
-      )}
+          </Box>
+          
+          {/* Overview Tab */}
+          {activeTab === 0 && (
+            <Grid container spacing={3}>
+              {/* L1 Positions */}
+              <Grid item xs={12} md={6}>
+                <Card variant="outlined">
+                  <CardHeader 
+                    title="IOTA L1 Positions" 
+                    subheader="Native IOTA and assets on Tangle"
+                  />
+                  <Divider />
+                  <CardContent>
+                    {!iotaConnected ? (
+                      <Alert severity="info">
+                        Connect your IOTA wallet to view L1 positions
+                      </Alert>
+                    ) : !l1Data ? (
+                      <Box display="flex" justifyContent="center" py={2}>
+                        <CircularProgress size={24} />
+                      </Box>
+                    ) : (
+                      <>
+                        <Typography variant="h6" gutterBottom>
+                          Balance: {l1Data.balance} IOTA
+                        </Typography>
+                        
+                        {l1Data.tokens && l1Data.tokens.length > 0 && (
+                          <Box mt={2}>
+                            <Typography variant="subtitle2" gutterBottom>
+                              Native Tokens:
+                            </Typography>
+                            <Table size="small">
+                              <TableHead>
+                                <TableRow>
+                                  <TableCell>Token</TableCell>
+                                  <TableCell align="right">Balance</TableCell>
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                {l1Data.tokens.map((token) => (
+                                  <TableRow key={token.id}>
+                                    <TableCell>{token.name || token.id.substring(0, 8)}</TableCell>
+                                    <TableCell align="right">{token.balance}</TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </Box>
+                        )}
+                        
+                        <Box mt={2} display="flex" justifyContent="flex-end">
+                          <Button 
+                            variant="outlined" 
+                            size="small"
+                            endIcon={<LinkIcon />}
+                            onClick={() => window.open(`https://explorer.shimmer.network/testnet/address/${iotaAddress}`, '_blank')}
+                          >
+                            View on Explorer
+                          </Button>
+                        </Box>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+              
+              {/* L2 Positions */}
+              <Grid item xs={12} md={6}>
+                <Card variant="outlined">
+                  <CardHeader 
+                    title="IOTA L2 Positions" 
+                    subheader="EVM assets and lending positions"
+                  />
+                  <Divider />
+                  <CardContent>
+                    {!web3Active ? (
+                      <Alert severity="info">
+                        Connect your EVM wallet to view L2 positions
+                      </Alert>
+                    ) : !l2Data ? (
+                      <Box display="flex" justifyContent="center" py={2}>
+                        <CircularProgress size={24} />
+                      </Box>
+                    ) : (
+                      <>
+                        <Grid container spacing={2}>
+                          <Grid item xs={6}>
+                            <Typography variant="subtitle2">Deposits:</Typography>
+                            <Typography variant="h6">{l2Data.deposits} SMR</Typography>
+                          </Grid>
+                          <Grid item xs={6}>
+                            <Typography variant="subtitle2">Borrows:</Typography>
+                            <Typography variant="h6">{l2Data.borrows} SMR</Typography>
+                          </Grid>
+                          <Grid item xs={6}>
+                            <Typography variant="subtitle2">Collateral:</Typography>
+                            <Typography variant="h6">{l2Data.collateral} SMR</Typography>
+                          </Grid>
+                          <Grid item xs={6}>
+                            <Typography variant="subtitle2">Health Factor:</Typography>
+                            <Typography 
+                              variant="h6" 
+                              color={
+                                l2Data.healthFactor > 1.5 ? 'success.main' : 
+                                l2Data.healthFactor > 1.0 ? 'warning.main' : 
+                                'error.main'
+                              }
+                            >
+                              {l2Data.healthFactor.toFixed(2)}
+                            </Typography>
+                          </Grid>
+                        </Grid>
+                        
+                        <Divider sx={{ my: 2 }} />
+                        
+                        <Box display="flex" alignItems="center">
+                          <Typography variant="subtitle2" mr={1}>Risk Score:</Typography>
+                          <Chip 
+                            label={l2Data.riskScore} 
+                            color={
+                              l2Data.riskScore < 30 ? 'success' : 
+                              l2Data.riskScore < 70 ? 'warning' : 
+                              'error'
+                            }
+                            size="small"
+                          />
+                        </Box>
+                        
+                        <Box mt={2} display="flex" justifyContent="flex-end">
+                          <Button 
+                            variant="outlined" 
+                            size="small"
+                            endIcon={<LinkIcon />}
+                            onClick={() => window.open(`https://explorer.evm.shimmer.network/address/${account}`, '_blank')}
+                          >
+                            View on Explorer
+                          </Button>
+                        </Box>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+              
+              {/* Cross-Layer Operations */}
+              <Grid item xs={12}>
+                <Card variant="outlined">
+                  <CardHeader 
+                    title="Cross-Layer Operations" 
+                    subheader="Transfer assets and data between L1 and L2"
+                  />
+                  <Divider />
+                  <CardContent>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} sm={6}>
+                        <Button 
+                          variant="contained" 
+                          startIcon={<SwapIcon />}
+                          fullWidth
+                          onClick={() => window.location.href = '/swap'}
+                          disabled={!iotaConnected || !web3Active}
+                        >
+                          Atomic Swap
+                        </Button>
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <Button 
+                          variant="outlined" 
+                          startIcon={<SendIcon />}
+                          fullWidth
+                          onClick={() => window.location.href = '/bridge'}
+                          disabled={!iotaConnected || !web3Active}
+                        >
+                          Bridge Assets
+                        </Button>
+                      </Grid>
+                      <Grid item xs={12}>
+                        {(!iotaConnected || !web3Active) && (
+                          <Alert severity="info" sx={{ mt: 2 }}>
+                            Connect both L1 and L2 wallets to enable cross-layer operations
+                          </Alert>
+                        )}
+                      </Grid>
+                    </Grid>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+          )}
+          
+          {/* Cross-Layer Messages Tab */}
+          {activeTab === 1 && (
+            <Card variant="outlined">
+              <CardHeader 
+                title="Cross-Layer Messages" 
+                subheader="Communication between L1 and L2 layers"
+              />
+              <Divider />
+              <CardContent>
+                {messages.length === 0 ? (
+                  <Alert severity="info">
+                    No cross-layer messages found
+                  </Alert>
+                ) : (
+                  <TableContainer>
+                    <Table>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Message ID</TableCell>
+                          <TableCell>Direction</TableCell>
+                          <TableCell>Type</TableCell>
+                          <TableCell>Status</TableCell>
+                          <TableCell>Timestamp</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {messages.map((message) => (
+                          <TableRow key={message.messageId}>
+                            <TableCell>
+                              {message.messageId.substring(0, 8)}...
+                            </TableCell>
+                            <TableCell>
+                              {message.direction === 'L1ToL2' ? 'L1 → L2' : 'L2 → L1'}
+                            </TableCell>
+                            <TableCell>
+                              {message.messageType || 'Unknown'}
+                            </TableCell>
+                            <TableCell>
+                              <Chip 
+                                label={message.status} 
+                                color={getStatusColor(message.status)}
+                                size="small"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              {formatDate(message.timestamp)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
+              </CardContent>
+            </Card>
+          )}
+          
+          {/* Atomic Swaps Tab */}
+          {activeTab === 2 && (
+            <Card variant="outlined">
+              <CardHeader 
+                title="Atomic Swaps" 
+                subheader="Cross-layer asset exchanges"
+              />
+              <Divider />
+              <CardContent>
+                <Alert severity="info" sx={{ mb: 3 }}>
+                  Atomic swaps allow you to exchange assets between IOTA L1 and L2 in a single transaction.
+                </Alert>
+                
+                <Button 
+                  variant="contained" 
+                  startIcon={<SwapIcon />}
+                  onClick={() => window.location.href = '/swap'}
+                  disabled={!iotaConnected || !web3Active}
+                >
+                  Initiate New Atomic Swap
+                </Button>
+                
+                {/* Todo: Add historical atomic swaps table */}
+              </CardContent>
+            </Card>
+          )}
+        </CardContent>
+      </Card>
     </Box>
   );
-};
+}
 
 export default CrossLayerDashboard;

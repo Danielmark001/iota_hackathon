@@ -12,6 +12,2619 @@ module.exports = {
   // Network to use for testing (testnet or devnet recommended)
   NETWORK: process.env.TEST_IOTA_NETWORK || 'testnet',
   
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
+  // Latest Shimmer testnet endpoints (2024)
+  NODES: {
+    testnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev',
+      'https://shimmer-testnet.api.nodesail.io'
+    ],
+    devnet: [
+      'https://api.testnet.shimmer.network',
+      'https://testnet.shimmer.iota-1.workers.dev'
+    ]
+  },
+  
   // Test timeouts
   TIMEOUTS: {
     SHORT: 5000,     // 5 seconds

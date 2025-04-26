@@ -103,6 +103,7 @@ const Header = () => {
     { text: 'Borrow', icon: <AccountBalanceWallet />, path: '/borrow' },
     { text: 'Identity', icon: <Fingerprint />, path: '/identity' },
     { text: 'Risk Assessment', icon: <Assessment />, path: '/risk' },
+    { text: 'AI Dashboard', icon: <Assessment />, path: '/ai-dashboard' },
     { text: 'Portfolio', icon: <Person />, path: '/portfolio' },
     { text: 'Transactions', icon: <HistoryToggleOff />, path: '/transactions' },
     { text: 'Messaging', icon: <Message />, path: '/messaging' },

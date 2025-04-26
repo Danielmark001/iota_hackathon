@@ -8,6 +8,7 @@
 const { Client, initLogger } = require('@iota/sdk');
 const logger = require('./utils/logger');
 const config = require('./config');
+const { CircuitBreaker } = require('./utils/circuit-breaker');
 
 // Initialize logging for better debugging
 initLogger({
@@ -272,10 +273,38 @@ async function withExponentialBackoff(operation, options = {}) {
 // Store node managers for different networks to avoid recreation
 const nodeManagers = {};
 
+// Store circuit breakers for different operations
+const circuitBreakers = {
+  getInfo: new CircuitBreaker({
+    failureThreshold: 3,
+    resetTimeout: 10000,
+    fallbackFunction: () => ({ 
+      nodeInfo: { 
+        status: { isHealthy: false }, 
+        name: 'Offline', 
+        version: 'Unknown'
+      }
+    })
+  }),
+  getBalance: new CircuitBreaker({
+    failureThreshold: 3,
+    resetTimeout: 15000
+  }),
+  submitBlock: new CircuitBreaker({
+    failureThreshold: 4,
+    resetTimeout: 20000
+  }),
+  getTransactions: new CircuitBreaker({
+    failureThreshold: 3,
+    resetTimeout: 15000,
+    fallbackFunction: () => []
+  })
+};
+
 /**
  * Create an IOTA Client instance with enhanced resilience
  * @param {string} network - The network to connect to (mainnet/testnet)
- * @returns {Promise<{client: Client, nodeManager: NodeManager}>} The IOTA Client instance and node manager
+ * @returns {Promise<{client: Client, nodeManager: NodeManager, circuitBreakers: Object}>} The IOTA Client instance, node manager, and circuit breakers
  */
 async function createClient(network = config.DEFAULT_NETWORK) {
   try {
@@ -381,7 +410,7 @@ async function createClient(network = config.DEFAULT_NETWORK) {
       // Start monitoring
       monitorClientNodes();
       
-      return { client, nodeManager };
+      return { client, nodeManager, circuitBreakers };
     } catch (error) {
       logger.error(`Error connecting to IOTA node: ${error.message}`);
       throw new Error(`Failed to connect to IOTA network ${network}: ${error.message}`);

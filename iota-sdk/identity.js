@@ -422,39 +422,24 @@ class IOTAIdentity {
    * Create a zero-knowledge proof from a credential
    * @param {Object} credential - Verifiable Credential
    * @param {Array} revealedAttributes - Attributes to reveal
+   * @param {Object} options - Proof options
    * @returns {Promise<Object>} Zero-knowledge proof
    */
-  async createZKProof(credential, revealedAttributes) {
+  async createZKProof(credential, revealedAttributes, options = {}) {
     try {
       logger.info(`Creating ZK proof for credential: ${credential.id}`);
       
-      // This is a simplified implementation of ZK proofs
-      // In a real implementation, this would use a proper ZK proof library
+      // Import ZK proof utilities
+      const zkProofs = require('./utils/zk-proofs');
       
-      // Extract only the revealed attributes
-      const revealedData = {};
-      for (const attribute of revealedAttributes) {
-        if (credential.credentialSubject[attribute] !== undefined) {
-          revealedData[attribute] = credential.credentialSubject[attribute];
-        }
-      }
+      // Default to Pedersen commitments unless specified
+      const scheme = options.scheme || zkProofs.ZkProofScheme.PEDERSEN;
       
-      // Create a hash of the original credential for verification
-      const credentialHash = crypto.createHash('sha256')
-        .update(JSON.stringify(credential))
-        .digest('hex');
-      
-      // Create the proof
-      const proof = {
-        id: `${credential.id}#proof-${Date.now()}`,
-        type: 'SimpleZKProof',
-        credentialId: credential.id,
-        issuer: credential.issuer,
-        credentialType: credential.type,
-        revealedAttributes: revealedData,
-        credentialHash: credentialHash,
-        created: new Date().toISOString()
-      };
+      // Create the proof using the enhanced ZK proof implementation
+      const proof = zkProofs.createProof(credential, revealedAttributes, {
+        scheme,
+        ...options
+      });
       
       // Store proof on Tangle
       const result = await this.storeZKProof(proof);
@@ -465,12 +450,13 @@ class IOTAIdentity {
         proof: proof,
         credentialId: credential.id,
         issuer: credential.issuer,
-        revealedAttributes: revealedAttributes,
+        revealedAttributes: Object.keys(proof.revealedAttributes),
+        proofType: proof.type,
         tangleExplorerUrl: `${config.getExplorerAddressUrl(result.blockId, this.network)}`,
         created: proof.created
       };
       
-      logger.info(`ZK proof created: ${proof.id}`);
+      logger.info(`ZK proof created: ${proof.id} using scheme ${scheme}`);
       return zkProofResult;
     }
     catch (error) {
@@ -515,44 +501,49 @@ class IOTAIdentity {
   /**
    * Verify a zero-knowledge proof
    * @param {Object} proof - Zero-knowledge proof
+   * @param {Object} options - Verification options
    * @returns {Promise<Object>} Verification result with revealed attributes
    */
-  async verifyZKProof(proof) {
+  async verifyZKProof(proof, options = {}) {
     try {
       logger.info(`Verifying ZK proof: ${proof.id}`);
       
-      // This is a simplified implementation of ZK proof verification
-      // In a real implementation, this would use a proper ZK proof verification library
+      // Import ZK proof utilities
+      const zkProofs = require('./utils/zk-proofs');
       
-      // Verify the proof is correctly formed
-      if (!proof.id || !proof.credentialId || !proof.issuer || !proof.credentialHash) {
-        throw new Error('Invalid proof format');
+      // Resolve the issuer's DID if needed
+      let issuerDoc;
+      if (options.verifyIssuer !== false) {
+        const issuerDID = proof.issuer;
+        issuerDoc = await this.resolveDID(issuerDID);
+        
+        if (!issuerDoc) {
+          throw new Error(`Issuer DID cannot be resolved: ${issuerDID}`);
+        }
+        
+        logger.info(`Issuer DID resolved: ${issuerDID}`);
       }
       
-      // Resolve the issuer's DID
-      const issuerDID = proof.issuer;
-      const issuerDoc = await this.resolveDID(issuerDID);
+      // Verify the proof using the enhanced ZK proof implementation
+      const verificationResult = zkProofs.verifyProof(proof, {
+        ...options,
+        issuerDoc
+      });
       
-      if (!issuerDoc) {
-        throw new Error(`Issuer DID cannot be resolved: ${issuerDID}`);
-      }
-      
-      // In a real implementation, we would perform cryptographic verification here
-      // For this simplified version, we'll assume the proof is valid if all required fields are present
-      
-      // Create verification result
-      const verificationResult = {
-        verified: true,
+      // Add additional information to the result
+      const enhancedResult = {
+        ...verificationResult,
         proofId: proof.id,
-        credentialId: proof.credentialId,
-        issuer: proof.issuer,
-        credentialType: proof.credentialType,
-        revealedAttributes: proof.revealedAttributes,
-        verificationType: proof.credentialType.includes('KYCVerification') ? 'KYC' : 'Other'
+        proofType: proof.type
       };
       
-      logger.info(`ZK proof verification result: ${JSON.stringify(verificationResult)}`);
-      return verificationResult;
+      logger.info(`ZK proof verification result: ${JSON.stringify({
+        verified: enhancedResult.verified,
+        proofId: enhancedResult.proofId,
+        credentialId: enhancedResult.credentialId
+      })}`);
+      
+      return enhancedResult;
     }
     catch (error) {
       logger.error(`Error verifying ZK proof: ${error.message}`);

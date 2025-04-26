@@ -76,23 +76,38 @@ export const IoTAProvider = ({ children }) => {
     }
   }, [walletBalance, network]);
   
-  // Initialize IOTA connection - supports both direct wallet and backend API
+  // Initialize IOTA connection with priority on direct wallet connection
   const initConnection = useCallback(async () => {
     try {
       setIsConnecting(true);
       
-      // First check if we can connect to a wallet directly
+      // First try to connect to a wallet directly - this is the preferred method
       if (wallet) {
         try {
           await connect();
           return; // If wallet connection succeeds, we're done
         } catch (walletError) {
-          console.warn('Direct wallet connection failed, falling back to backend:', walletError);
-          // Continue to backend connection as fallback
+          console.warn('Direct wallet connection failed:', walletError);
+          // Instead of falling back, we'll retry with a different approach
+          try {
+            // Try different connection method if available
+            if (typeof window.iota !== 'undefined') {
+              await window.iota.connect();
+              return;
+            }
+            
+            // Try connecting with a delay
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            await connect();
+            return;
+          } catch (retryError) {
+            console.error('All wallet connection attempts failed:', retryError);
+            // Now try backend as last resort
+          }
         }
       }
       
-      // Fallback to backend API connection
+      // As a last resort, try connecting via backend API
       const healthResponse = await axios.get(`${apiUrl}/health`);
       
       if (healthResponse.data?.iota?.status === 'healthy') {
@@ -100,13 +115,12 @@ export const IoTAProvider = ({ children }) => {
         setNetwork(healthResponse.data.iota.network);
         showSnackbar(`Connected to ${NETWORKS[healthResponse.data.iota.network]?.name || healthResponse.data.iota.network}`, 'success');
       } else {
-        setIsConnected(false);
-        showSnackbar('IOTA node connection unavailable', 'error');
+        throw new Error('IOTA node connection unavailable');
       }
     } catch (error) {
       console.error('Error connecting to IOTA:', error);
       setIsConnected(false);
-      showSnackbar('Failed to connect to IOTA network', 'error');
+      showSnackbar('Failed to connect to IOTA network. Please ensure you have a compatible wallet installed.', 'error');
     } finally {
       setIsConnecting(false);
     }
@@ -184,7 +198,7 @@ export const IoTAProvider = ({ children }) => {
     }
   }, [apiUrl, address, isConnected, showSnackbar]);
   
-  // Send IOTA tokens - supports both direct wallet and API
+  // Send IOTA tokens - prioritizes direct wallet connection
   const sendTokens = useCallback(async (recipientAddress, amount) => {
     try {
       if (!isConnected) {
@@ -197,7 +211,7 @@ export const IoTAProvider = ({ children }) => {
         return null;
       }
       
-      // If we have a connected wallet, use it directly
+      // Always try to use the connected wallet directly
       if (wallet && status === 'connected') {
         try {
           // Convert amount to base units (glow) - 1 SMR = 1,000,000 glow
@@ -210,10 +224,22 @@ export const IoTAProvider = ({ children }) => {
             tag: 'IntelliLend'
           };
           
-          // Send the transaction
-          const result = await wallet.send(transaction);
+          // Send the transaction with retry logic
+          let result;
+          try {
+            // First attempt
+            result = await wallet.send(transaction);
+          } catch (firstAttemptError) {
+            console.warn('First transaction attempt failed, retrying:', firstAttemptError);
+            
+            // Wait a moment and retry
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            result = await wallet.send(transaction);
+          }
           
           showSnackbar(`Sent ${amount} SMR successfully`, 'success');
+          await getBalance(); // Refresh balance after sending
+          
           return {
             success: true,
             blockId: result.blockId,
@@ -223,33 +249,18 @@ export const IoTAProvider = ({ children }) => {
           };
         } catch (walletError) {
           console.error('Wallet send error:', walletError);
-          showSnackbar(`Wallet error: ${walletError.message}`, 'error');
-          return null;
+          showSnackbar(`Wallet error: ${walletError.message}. Please ensure your wallet is properly connected.`, 'error');
+          throw walletError; // Throw instead of returning null to prevent falling back
         }
+      } else {
+        // If wallet is not connected, direct the user to connect one
+        showSnackbar('Please connect your IOTA wallet to send tokens', 'warning');
+        throw new Error('Wallet not connected');
       }
-      
-      // Fallback to API if direct wallet fails or isn't available
-      // Get authentication token if using secure endpoints
-      const token = localStorage.getItem('auth_token');
-      
-      const response = await axios.post(
-        `${apiUrl}/api/iota/send`,
-        { address: recipientAddress, amount },
-        { headers: token ? { Authorization: `Bearer ${token}` } : {} }
-      );
-      
-      if (response.data?.success) {
-        showSnackbar(`Sent ${amount} SMR successfully`, 'success');
-        // Refresh balance after sending
-        await getBalance();
-        return response.data;
-      }
-      
-      return null;
     } catch (error) {
       console.error('Error sending IOTA tokens:', error);
       showSnackbar(error.response?.data?.message || 'Failed to send IOTA tokens', 'error');
-      return null;
+      throw error;
     }
   }, [apiUrl, getBalance, isConnected, showSnackbar, wallet, status]);
   

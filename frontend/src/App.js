@@ -18,6 +18,22 @@ import SwapPage from './pages/SwapPage';
 import StakingPage from './pages/StakingPage';
 import LiquidationAlertsPage from './pages/LiquidationAlertsPage';
 import TransactionHistoryPage from './pages/TransactionHistoryPage';
+import ExplainableAIPage from './pages/ExplainableAIPage';
+import ExplainableAIPage from './pages/ExplainableAIPage';
+import ExplainableAIPage from './pages/ExplainableAIPage';
+import ExplainableAIPage from './pages/ExplainableAIPage';
+import ExplainableAIPage from './pages/ExplainableAIPage';
+import ExplainableAIPage from './pages/ExplainableAIPage';
+import ExplainableAIPage from './pages/ExplainableAIPage';
+import ExplainableAIPage from './pages/ExplainableAIPage';
+import ExplainableAIPage from './pages/ExplainableAIPage';
+import ExplainableAIPage from './pages/ExplainableAIPage';
+import ExplainableAIPage from './pages/ExplainableAIPage';
+import ExplainableAIPage from './pages/ExplainableAIPage';
+import ExplainableAIPage from './pages/ExplainableAIPage';
+import ExplainableAIPage from './pages/ExplainableAIPage';
+import ExplainableAIPage from './pages/ExplainableAIPage';
+import ExplainableAIPage from './pages/ExplainableAIPage';
 import LoadingBackdrop from './components/ui/LoadingBackdrop';
 import { IoTAProvider } from './context/IoTAContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -68,6 +84,7 @@ function App() {
                       <Route path="/staking" element={<StakingPage />} />
                       <Route path="/liquidation-alerts" element={<LiquidationAlertsPage />} />
                       <Route path="/transactions" element={<TransactionHistoryPage />} />
+                      <Route path="/ai-dashboard" element={<ExplainableAIPage />} />
                       
                       {/* 404 route */}
                       <Route path="*" element={<NotFound />} />

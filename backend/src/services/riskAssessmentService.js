@@ -28,7 +28,7 @@ class RiskAssessmentService {
      */
     constructor(options = {}) {
         this.apiUrl = options.apiUrl || API_URL;
-        this.useMocks = options.useMocks || USE_MOCKS;
+        this.useMocks = false; // Force to false regardless of environment variable
         this.useLocalModel = options.useLocalModel || USE_LOCAL_MODEL;
         this.modelPath = options.modelPath || AI_MODEL_PATH;
         this.apiProcess = null;
@@ -224,14 +224,13 @@ class RiskAssessmentService {
                 } catch (pythonError) {
                     logger.error(`Local Python model also failed: ${pythonError.message}`);
                     
-                    // Fallback to mock if all else fails
-                    return this.generateMockRiskAssessment(userAddress, userData);
+                    // No fallback to mock data, throw error instead
+                    throw new Error(`Risk assessment failed: ${pythonError.message}`);
                 }
             }
             
-            // Fallback to mock assessment on error
-            logger.info(`Using mock risk assessment for ${userAddress} due to error`);
-            return this.generateMockRiskAssessment(userAddress, userData);
+            // No fallback to mock data, throw error
+            throw new Error(`Risk assessment failed: ${error.message}`);
         }
     }
     
@@ -269,8 +268,8 @@ class RiskAssessmentService {
         } catch (error) {
             logger.error(`Error fetching user data for ${userAddress}: ${error.message}`);
             
-            // Generate simulated data as fallback
-            return this.generateSimulatedUserData(userAddress);
+            // Throw error instead of generating simulated data
+            throw new Error(`Error fetching user data: ${error.message}`);
         }
     }
     
@@ -346,12 +345,7 @@ class RiskAssessmentService {
         logger.info(`Getting recommendations for ${userAddress}`);
         
         try {
-            // If using mocks, generate simulated recommendations
-            if (this.useMocks) {
-                return this.generateMockRecommendations(userAddress);
-            }
-            
-            // Call the API
+            // Call the API directly - no mock option
             const response = await axios.get(`${this.apiUrl}/api/recommendations/${userAddress}`, {
                 timeout: 10000
             });
@@ -359,8 +353,8 @@ class RiskAssessmentService {
             return response.data.recommendations || [];
         } catch (error) {
             logger.error(`Error getting recommendations for ${userAddress}: ${error.message}`);
-            // Fallback to mock recommendations
-            return this.generateMockRecommendations(userAddress);
+            // Throw error instead of falling back to mock data
+            throw new Error(`Error getting recommendations: ${error.message}`);
         }
     }
     
@@ -373,12 +367,7 @@ class RiskAssessmentService {
         logger.info(`Getting model performance metrics${timeRange ? ` for last ${timeRange / (24 * 60 * 60 * 1000)} days` : ''}`);
         
         try {
-            // If using mocks, generate simulated metrics
-            if (this.useMocks) {
-                return this.generateMockPerformanceMetrics(timeRange);
-            }
-            
-            // Call the API
+            // Call the API directly - no mock option
             const response = await axios.get(`${this.apiUrl}/api/model/performance`, {
                 params: timeRange ? { timeRange } : {},
                 timeout: 10000
@@ -387,8 +376,8 @@ class RiskAssessmentService {
             return response.data;
         } catch (error) {
             logger.error(`Error getting model performance metrics: ${error.message}`);
-            // Fallback to mock metrics
-            return this.generateMockPerformanceMetrics(timeRange);
+            // Throw error instead of falling back to mock data
+            throw new Error(`Error getting model performance metrics: ${error.message}`);
         }
     }
     
@@ -400,12 +389,7 @@ class RiskAssessmentService {
         logger.info('Getting feature importance');
         
         try {
-            // If using mocks, generate simulated feature importance
-            if (this.useMocks) {
-                return this.generateMockFeatureImportance();
-            }
-            
-            // Call the API
+            // Call the API directly - no mock option
             const response = await axios.get(`${this.apiUrl}/api/feature-importance`, {
                 timeout: 10000
             });
@@ -413,8 +397,8 @@ class RiskAssessmentService {
             return response.data.features || [];
         } catch (error) {
             logger.error(`Error getting feature importance: ${error.message}`);
-            // Fallback to mock feature importance
-            return this.generateMockFeatureImportance();
+            // Throw error instead of falling back to mock data
+            throw new Error(`Error getting feature importance: ${error.message}`);
         }
     }
     

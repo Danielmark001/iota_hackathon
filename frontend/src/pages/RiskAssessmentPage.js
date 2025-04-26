@@ -562,11 +562,11 @@ const RiskAssessmentPage = () => {
                   variant="outlined"
                   fullWidth
                   component={RouterLink}
-                  to="/dashboard"
-                  startIcon={<InsertChart />}
+                  to="/ai-dashboard"
+                  startIcon={<Analytics />}
                   sx={{ py: 1 }}
                 >
-                  Dashboard
+                  AI Dashboard
                 </Button>
               </Grid>
               <Grid item xs={6}>
