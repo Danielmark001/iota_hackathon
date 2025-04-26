@@ -19,8 +19,11 @@ import joblib
 import pickle
 from typing import Dict, Any, List, Optional, Union, Tuple
 
-# Import risk models and IOTA connection
+# Import component models and IOTA connection
 from transformer_risk_model_v2 import AdvancedTransformerRiskModel
+from gradient_boosting_risk_model import GradientBoostingRiskModel
+from ensemble_risk_model import EnsembleRiskModel
+from reinforcement_learning import RLFineTuner
 from ai_iota_connection import get_iota_connection
 
 # Configure logging
@@ -37,8 +40,8 @@ logger = logging.getLogger(__name__)
 class EnhancedIOTARiskModel:
     """
     Advanced risk assessment model with IOTA integration.
-    This model builds on the transformer-based model and adds IOTA-specific
-    features and cross-layer analysis.
+    This model uses stacking ensemble of transformer-based and gradient boosting models,
+    enhanced with IOTA-specific features and cross-layer analysis.
     """
     
     def __init__(self, config_path="config/iota_risk_model_config.json"):
@@ -51,8 +54,11 @@ class EnhancedIOTARiskModel:
         # Load configuration
         self.config = self._load_config(config_path)
         
-        # Initialize transformer risk model
+        # Initialize component models
         self.transformer_model = AdvancedTransformerRiskModel()
+        self.gradient_boosting_model = GradientBoostingRiskModel()
+        self.ensemble_model = EnsembleRiskModel()
+        self.rl_fine_tuner = RLFineTuner()
         
         # Initialize feature mappings for IOTA
         self._init_feature_mappings()
@@ -72,20 +78,30 @@ class EnhancedIOTARiskModel:
         retry_count = 0
         while retry_count < max_retries:
             try:
-                # Get IOTA connection
+                # Get IOTA connection, forcing mainnet for production
+                use_mainnet = os.environ.get("NODE_ENV") == "production" or os.environ.get("IOTA_NETWORK") == "mainnet"
+                
+                if use_mainnet:
+                    # Override any config to use mainnet
+                    os.environ["IOTA_NETWORK"] = "mainnet"
+                    logger.info("Forcing mainnet connection for IOTA")
+                
                 self.iota_connection = get_iota_connection("config/iota_connection_config.json")
                 
                 # Check IOTA connection
                 if self.iota_connection.is_connected:
-                    logger.info("Connected to IOTA network for real-time risk assessment")
+                    network = self.iota_connection.config.get("network", "unknown")
+                    logger.info(f"Connected to IOTA network ({network}) for real-time risk assessment")
                     return True
                 else:
                     logger.warning("Failed to connect to IOTA network, retrying...")
                     retry_count += 1
+                    import time
                     time.sleep(2 ** retry_count)  # Exponential backoff
             except Exception as e:
                 logger.error(f"Error connecting to IOTA network (attempt {retry_count+1}/{max_retries}): {e}")
                 retry_count += 1
+                import time
                 time.sleep(2 ** retry_count)  # Exponential backoff
         
         logger.warning("Failed to connect to IOTA network after multiple attempts, some features may be unavailable")
@@ -103,10 +119,10 @@ class EnhancedIOTARiskModel:
             # Default configuration
             return {
                 "model_dir": "./models",
-                "ensemble_weights": {
-                    "transformer": 0.6,
-                    "iota_specific": 0.4
-                },
+                "ensemble_model_filename": "ensemble_risk_model.joblib",
+                "gradient_boosting_model_filename": "xgboost_risk_model.joblib",
+                "transformer_model_filename": "transformer_risk_model.pkl",
+                "rl_model_filename": "rl_fine_tuner.h5",
                 "iota_feature_weights": {
                     "transaction_count": 0.1,
                     "message_count": 0.05,
@@ -119,7 +135,8 @@ class EnhancedIOTARiskModel:
                     "wallet_balance": 0.05,
                     "collateral_ratio": 0.1
                 },
-                "iota_importance_factor": 0.4,  # Weight for IOTA-specific features
+                "use_ensemble": True,  # Whether to use the ensemble model or fallback to simpler method
+                "use_reinforcement_learning": True,  # Whether to apply RL fine-tuning
                 "identity_verification_bonus": 15,  # Points to reduce from risk score if verified
                 "cross_layer_activity_factor": 0.2,  # Importance of cross-layer activity
                 "min_iota_transactions": 5,  # Minimum transactions for reliable IOTA scoring
@@ -153,55 +170,78 @@ class EnhancedIOTARiskModel:
             "wallet_balance": (0, 1000)
         }
     
-    def _load_model(self):
-        """Load trained model if available."""
+    def _load_model(self) -> bool:
+        """Load trained ensemble model."""
         try:
-            # Load transformer model
+            # Initialize ensemble model with config
+            self.ensemble_model = EnsembleRiskModel(self.config.get("config_path", "config/ensemble_model_config.json"))
+            
+            # Check if ensemble model is available
             model_dir = self.config.get("model_dir", "./models")
-            model_path = os.path.join(model_dir, "enhanced_iota_risk_model.pkl")
+            ensemble_model_filename = self.config.get("ensemble_model_filename", "ensemble_risk_model.joblib")
+            model_path = os.path.join(model_dir, ensemble_model_filename)
             
             if os.path.exists(model_path):
-                with open(model_path, 'rb') as f:
-                    self.model_data = pickle.load(f)
-                    
-                # Set feature ranges from saved model
-                if 'feature_ranges' in self.model_data:
-                    self.feature_ranges = self.model_data['feature_ranges']
-                    
-                logger.info(f"Model loaded from {model_path}")
+                logger.info(f"Ensemble model available at {model_path}")
                 return True
             else:
-                logger.warning(f"Model file {model_path} not found.")
+                logger.warning(f"Ensemble model file {model_path} not found. Will need training.")
                 return False
         except Exception as e:
-            logger.error(f"Error loading model: {e}")
+            logger.error(f"Error loading ensemble model: {e}")
             return False
     
-    def save_model(self):
-        """Save trained model."""
+    def train_model(self, training_data: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Train the ensemble model with provided data.
+        
+        Args:
+            training_data: DataFrame with features and target
+            
+        Returns:
+            Dictionary with training metrics
+        """
         try:
-            model_dir = self.config.get("model_dir", "./models")
-            os.makedirs(model_dir, exist_ok=True)
+            logger.info(f"Training model with {len(training_data)} samples")
             
-            model_path = os.path.join(model_dir, "enhanced_iota_risk_model.pkl")
+            # Train gradient boosting model
+            gb_metrics = self.gradient_boosting_model.train(training_data)
+            logger.info(f"Gradient boosting model training complete: accuracy={gb_metrics.get('accuracy', 0):.4f}")
             
-            # Prepare model data
-            model_data = {
-                'feature_ranges': self.feature_ranges,
-                'config': self.config,
-                'version': '1.0',
-                'timestamp': datetime.now().isoformat()
-            }
+            # Train ensemble model
+            ensemble_metrics = self.ensemble_model.train(training_data)
+            logger.info(f"Ensemble model training complete: accuracy={ensemble_metrics.get('accuracy', 0):.4f}")
             
-            # Save model data
-            with open(model_path, 'wb') as f:
-                pickle.dump(model_data, f)
+            # Fine-tune model using reinforcement learning if enabled
+            rl_metrics = {}
+            if self.config.get("use_reinforcement_learning", True):
+                # Prepare data for RL fine-tuning
+                for i, row in training_data.iterrows():
+                    # Get prediction from ensemble model
+                    try:
+                        prediction = self.ensemble_model.predict_risk_class(training_data.iloc[[i]])[0]
+                        training_data.loc[i, "predicted_risk_score"] = prediction["riskScore"]
+                    except Exception as e:
+                        logger.error(f"Error getting prediction for RL fine-tuning: {e}")
+                        training_data.loc[i, "predicted_risk_score"] = 50.0  # Default to medium risk
                 
-            logger.info(f"Model saved to {model_path}")
-            return True
+                # Fine-tune with reinforcement learning
+                rl_metrics = self.rl_fine_tuner.fine_tune_model(training_data)
+                logger.info(f"Reinforcement learning fine-tuning complete: avg_reward={rl_metrics.get('avg_reward', 0):.2f}")
+            
+            return {
+                "gradient_boosting": gb_metrics,
+                "ensemble": ensemble_metrics,
+                "reinforcement_learning": rl_metrics,
+                "timestamp": datetime.now().isoformat()
+            }
         except Exception as e:
-            logger.error(f"Error saving model: {e}")
-            return False
+            logger.error(f"Error training model: {e}")
+            return {
+                "error": str(e),
+                "success": False,
+                "timestamp": datetime.now().isoformat()
+            }
     
     def normalize_feature(self, feature_name: str, value: float) -> float:
         """
@@ -401,82 +441,162 @@ class EnhancedIOTARiskModel:
             iota_features = self.extract_iota_features(user_data)
             logger.info(f"Extracted IOTA features: {iota_features}")
             
-            # Calculate IOTA-specific score
-            iota_score = self.calculate_iota_specific_score(iota_features)
-            logger.info(f"IOTA-specific risk score: {iota_score:.2f}")
+            # Convert features to DataFrame for model input
+            features_df = pd.DataFrame([iota_features])
             
-            # Get transformer model score
-            transformer_score = None
-            transformer_confidence = 0.7  # Default confidence
-            transformer_recommendations = []
+            # Add original user data fields that might be needed
+            for key, value in user_data.items():
+                if key not in features_df.columns and key not in ['address', 'iota_address']:
+                    features_df[key] = value
             
-            if self.transformer_model:
+            # Use ensemble model if available and configured
+            use_ensemble = self.config.get("use_ensemble", True)
+            final_score = None
+            risk_class = None
+            confidence_score = None
+            component_scores = {}
+            recommendations = []
+            
+            if use_ensemble and hasattr(self.ensemble_model, 'meta_learner') and self.ensemble_model.meta_learner is not None:
                 try:
-                    # Convert user_data to DataFrame for transformer model
-                    user_df = pd.DataFrame([user_data])
-                    transformer_result = self.transformer_model.predict(user_df)
+                    logger.info("Using ensemble model for risk assessment")
                     
-                    transformer_score = transformer_result['riskScore']
-                    transformer_confidence = transformer_result.get('confidenceScore', 0.7)
-                    transformer_recommendations = transformer_result.get('recommendations', [])
+                    # Get ensemble prediction with detailed output
+                    prediction_result = self.ensemble_model.predict_risk_class(features_df)[0]
                     
-                    logger.info(f"Transformer model risk score: {transformer_score:.2f}")
+                    final_score = prediction_result.get('riskScore', 50)
+                    confidence_score = prediction_result.get('confidenceScore', 0.7)
+                    component_scores = prediction_result.get('componentScores', {})
+                    
+                    # Determine risk class
+                    risk_class = prediction_result.get('riskClass', 'Medium Risk')
+                    
+                    logger.info(f"Ensemble risk assessment: score={final_score:.2f}, class={risk_class}, confidence={confidence_score:.2f}")
+                    
+                    # Apply reinforcement learning fine-tuning if enabled
+                    use_rl = self.config.get("use_reinforcement_learning", True)
+                    
+                    if use_rl and hasattr(self.rl_fine_tuner, 'model') and self.rl_fine_tuner.model is not None:
+                        try:
+                            logger.info("Applying RL fine-tuning to risk score")
+                            
+                            # Add predicted score to features
+                            features_df["predicted_risk_score"] = final_score
+                            
+                            # Get adjusted score
+                            adjustment_result = self.rl_fine_tuner.adjust_risk_score(features_df)
+                            adjusted_score = adjustment_result["adjustments"][0]["adjustedScore"]
+                            adjustment_amount = adjustment_result["adjustments"][0]["adjustment"]
+                            
+                            logger.info(f"RL adjustment: {adjustment_amount:+.2f} (original: {final_score:.2f}, adjusted: {adjusted_score:.2f})")
+                            
+                            # Update final score and add to component scores
+                            final_score = adjusted_score
+                            component_scores["rlAdjustment"] = adjustment_amount
+                        except Exception as e:
+                            logger.error(f"Error applying RL fine-tuning: {e}")
+                            # Continue with ensemble score
                 except Exception as e:
-                    logger.error(f"Error getting transformer score: {e}")
-                    # Use IOTA score as fallback
-                    transformer_score = iota_score
-            else:
-                logger.warning("Transformer model not available, using only IOTA scoring")
-                transformer_score = iota_score
+                    logger.error(f"Error using ensemble model: {e}")
+                    # Fall back to simpler approach
+                    use_ensemble = False
             
-            # Combine scores with ensemble weights
-            ensemble_weights = self.config.get("ensemble_weights", {"transformer": 0.6, "iota_specific": 0.4})
-            
-            combined_score = (
-                ensemble_weights["transformer"] * transformer_score +
-                ensemble_weights["iota_specific"] * iota_score
-            )
-            
-            # Round to integer
-            final_score = int(round(combined_score))
-            
-            # Calculate confidence based on data availability
-            has_iota_address = user_data.get("has_iota_address", False)
-            iota_tx_count = user_data.get("iota_transaction_count", 0)
-            min_tx_threshold = self.config.get("min_iota_transactions", 5)
-            
-            iota_confidence = 0.6
-            if has_iota_address:
-                if iota_tx_count >= min_tx_threshold:
-                    iota_confidence = 0.9
-                elif iota_tx_count > 0:
-                    iota_confidence = 0.75
-            
-            # Combine confidences
-            combined_confidence = (
-                ensemble_weights["transformer"] * transformer_confidence +
-                ensemble_weights["iota_specific"] * iota_confidence
-            )
-            
-            # Determine risk class
-            thresholds = self.config.get("risk_class_thresholds", [20, 40, 60, 80])
-            risk_classes = ["Very Low Risk", "Low Risk", "Medium Risk", "High Risk", "Very High Risk"]
-            
-            risk_class_index = 0
-            for i, threshold in enumerate(thresholds):
-                if final_score >= threshold:
-                    risk_class_index = i + 1
-            
-            risk_class = risk_classes[risk_class_index]
+            # Fall back to simpler approach if ensemble fails or not configured
+            if not use_ensemble or final_score is None:
+                logger.info("Using separate model components for risk assessment")
+                
+                # Get individual model scores
+                gb_score = None
+                transformer_score = None
+                
+                # Try gradient boosting model
+                if hasattr(self.gradient_boosting_model, 'model') and self.gradient_boosting_model.model is not None:
+                    try:
+                        gb_results = self.gradient_boosting_model.predict_risk_class(features_df)[0]
+                        gb_score = gb_results.get('riskScore', None)
+                        if gb_score is not None:
+                            component_scores["gradientBoostingScore"] = gb_score
+                            logger.info(f"Gradient boosting risk score: {gb_score:.2f}")
+                    except Exception as e:
+                        logger.error(f"Error getting gradient boosting score: {e}")
+                
+                # Try transformer model
+                if self.transformer_model:
+                    try:
+                        transformer_result = self.transformer_model.predict(features_df)
+                        if isinstance(transformer_result, dict):
+                            transformer_score = transformer_result.get('riskScore', None)
+                        elif isinstance(transformer_result, list) and len(transformer_result) > 0:
+                            transformer_score = transformer_result[0].get('riskScore', None)
+                            
+                        if transformer_score is not None:
+                            component_scores["transformerScore"] = transformer_score
+                            logger.info(f"Transformer risk score: {transformer_score:.2f}")
+                    except Exception as e:
+                        logger.error(f"Error getting transformer score: {e}")
+                
+                # Calculate IOTA-specific score
+                iota_score = self.calculate_iota_specific_score(iota_features)
+                component_scores["iotaScore"] = iota_score
+                logger.info(f"IOTA-specific risk score: {iota_score:.2f}")
+                
+                # Combine available scores
+                available_scores = []
+                if gb_score is not None:
+                    available_scores.append(gb_score)
+                if transformer_score is not None:
+                    available_scores.append(transformer_score)
+                available_scores.append(iota_score)
+                
+                # Average the available scores
+                final_score = sum(available_scores) / len(available_scores)
+                
+                # Determine risk class based on thresholds
+                thresholds = self.config.get("risk_class_thresholds", [20, 40, 60, 80])
+                risk_classes = ["Very Low Risk", "Low Risk", "Medium Risk", "High Risk", "Very High Risk"]
+                
+                risk_class_index = 0
+                for i, threshold in enumerate(thresholds):
+                    if final_score >= threshold:
+                        risk_class_index = i + 1
+                
+                risk_class = risk_classes[risk_class_index]
+                
+                # Set a moderate confidence score
+                confidence_score = 0.7
+                
+                # Adjust confidence based on data quality
+                if not has_iota_address:
+                    confidence_score *= 0.8
+                
+                if iota_features.get('used_real_iota_data', 0) < 0.5:
+                    confidence_score *= 0.9
+                
+                min_tx_threshold = self.config.get("min_iota_transactions", 5)
+                iota_tx_count = int(iota_features.get("transaction_count", 0) * 100)
+                if iota_tx_count < min_tx_threshold:
+                    confidence_score *= 0.9
             
             # Generate IOTA-specific recommendations
-            iota_recommendations = self._generate_iota_recommendations(user_data, iota_features, final_score)
+            recommendations = self._generate_iota_recommendations(user_data, iota_features, final_score)
+            
+            # Get transformer recommendations if available
+            transformer_recommendations = []
+            if self.transformer_model:
+                try:
+                    transformer_result = self.transformer_model.predict(features_df)
+                    if isinstance(transformer_result, dict):
+                        transformer_recommendations = transformer_result.get('recommendations', [])
+                    elif isinstance(transformer_result, list) and len(transformer_result) > 0:
+                        transformer_recommendations = transformer_result[0].get('recommendations', [])
+                except Exception as e:
+                    logger.error(f"Error getting transformer recommendations: {e}")
             
             # Combine recommendations (prioritize IOTA-specific ones)
-            all_recommendations = iota_recommendations + [r for r in transformer_recommendations if not any(ir['title'] == r['title'] for ir in iota_recommendations)]
+            all_recommendations = recommendations + [r for r in transformer_recommendations if not any(ir['title'] == r['title'] for ir in recommendations)]
             
             # Sort by impact
-            impact_order = {"high": 0, "medium": 1, "low": 2}
+            impact_order = {"high": 0, "medium": 1, "low": 2, "positive": 3}
             sorted_recommendations = sorted(
                 all_recommendations,
                 key=lambda x: impact_order.get(x.get("impact", "medium"), 1)
@@ -488,17 +608,18 @@ class EnhancedIOTARiskModel:
             # Return assessment results
             return {
                 "address": address,
-                "riskScore": final_score,
+                "riskScore": round(final_score),
                 "riskClass": risk_class,
-                "confidenceScore": combined_confidence,
-                "iotaScore": iota_score,
-                "transformerScore": transformer_score,
+                "confidenceScore": confidence_score,
+                "componentScores": component_scores,
                 "recommendations": sorted_recommendations[:5],  # Top 5 recommendations
                 "riskFactors": risk_factors,
                 "dataQuality": {
                     "hasIotaAddress": has_iota_address,
-                    "iotaTransactionCount": iota_tx_count,
-                    "iotaDataQuality": "high" if iota_tx_count >= min_tx_threshold else "medium" if iota_tx_count > 0 else "low"
+                    "iotaTransactionCount": int(iota_features.get('transaction_count', 0) * 100),
+                    "iotaDataQuality": "high" if iota_features.get('used_real_iota_data', 0) > 0.5 else "low",
+                    "usedRealIotaData": iota_features.get('used_real_iota_data', 0) > 0.5,
+                    "dataCompleteness": self._calculate_data_completeness(user_data)
                 },
                 "timestamp": datetime.now().isoformat()
             }
@@ -512,6 +633,16 @@ class EnhancedIOTARiskModel:
                 "error": str(e),
                 "timestamp": datetime.now().isoformat()
             }
+    
+    def _calculate_data_completeness(self, user_data: Dict[str, Any]) -> float:
+        """Calculate data completeness score."""
+        key_fields = [
+            "address", "iota_address", "transaction_count", "balance",
+            "collateral_ratio", "cross_layer_transfers", "identity_verification_level"
+        ]
+        
+        present_count = sum(1 for field in key_fields if field in user_data and user_data[field] is not None)
+        return present_count / len(key_fields)
     
     def _generate_iota_recommendations(self, user_data: Dict[str, Any], iota_features: Dict[str, float], risk_score: float) -> List[Dict[str, Any]]:
         """

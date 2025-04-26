@@ -345,6 +345,24 @@ withExponentialBackoff(async () => {
     liquidationService = iotaComponents.liquidationService;
     crossLayerMonitor = iotaComponents.crossLayerMonitor;
     
+    // Set IOTA client in risk assessment service
+    if (iotaClient) {
+      riskAssessmentService.setIotaClient(iotaClient);
+      logger.info('IOTA client set in Risk Assessment Service');
+    }
+    
+    // Set IOTA account in risk assessment service
+    if (iotaAccount) {
+      riskAssessmentService.setIotaAccount(iotaAccount);
+      logger.info('IOTA account set in Risk Assessment Service');
+    }
+    
+    // Store IOTA components in app for use in routes
+    app.iotaClient = iotaClient;
+    app.iotaAccount = iotaAccount;
+    app.iotaIdentityService = iotaIdentityService;
+    app.iotaStreamsService = iotaStreamsService;
+    
     // Initialize IOTA Identity Bridge if not available
     if (!iotaIdentityBridge && iotaClient && iotaIdentityService) {
       logger.info('Initializing IOTA Identity Bridge...');
@@ -375,15 +393,32 @@ withExponentialBackoff(async () => {
   logger.warn('Continuing with limited functionality. Some IOTA features may not be available.');
 });
 
-// Use real AI integration - no mocks in production
+// Use real AI integration with advanced ML models
 const AIIntegration = require('../ai-model/api/ai_integration');
-console.log('Using REAL AI integration');
+const RiskAssessmentService = require('./src/services/riskAssessmentService');
+console.log('Using REAL AI integration with advanced ML risk assessment');
 
 // Load utilities and middleware
 const { authenticate } = require('./middleware/auth');
 const { validateRequest } = require('./middleware/validation');
 const { cacheMiddleware } = require('./middleware/cache');
 const logger = require('./utils/logger');
+
+// Initialize Risk Assessment Service
+const riskAssessmentService = new RiskAssessmentService({
+  apiUrl: process.env.AI_API_URL || 'http://localhost:5000',
+  useMocks: process.env.USE_MOCKS === 'true',
+  useLocalModel: process.env.USE_LOCAL_MODEL === 'true',
+  modelPath: process.env.AI_MODEL_PATH || '../ai-model/models'
+});
+
+// Start the AI API server if using local model
+if (process.env.USE_LOCAL_MODEL === 'true') {
+  riskAssessmentService.startApiServer().catch(error => {
+    logger.error(`Error starting AI API server: ${error.message}`);
+    logger.warn('Continuing without AI API server - functionality may be limited');
+  });
+}
 
 // Initialize express app
 const app = express();
@@ -2000,6 +2035,10 @@ app.post('/api/admin/update-risk-score', authenticate, validateRequest(['address
     res.status(500).json({ error: 'Error updating risk score', message: error.message });
   }
 });
+
+// Risk Assessment Routes
+const riskAssessmentRoutes = require('./src/routes/riskAssessmentRoutes');
+app.use('/api/risk-assessment', riskAssessmentRoutes);
 
 // Cross-Layer Swap Routes
 const swapRoutes = require('./crosschain/swap/swapRoutes');

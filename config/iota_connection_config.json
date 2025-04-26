@@ -1,0 +1,30 @@
+{
+  "network": "mainnet",
+  "nodes": [
+    "https://api.shimmer.network",
+    "https://shimmer-mainnet.api.nodesail.io",
+    "https://shimmer.api.iotaichi.network"
+  ],
+  "authentication": {
+    "type": "none"
+  },
+  "connection_timeout": 10000,
+  "retry_count": 3,
+  "retry_delay": 1000,
+  "max_cache_age": 300,
+  "identity_resolver": "https://identity.iota.org/resolver",
+  "use_local_pow": true,
+  "local_pow_level": "auto",
+  "data_retention": {
+    "transaction_history_days": 90,
+    "price_history_days": 30
+  },
+  "monitoring": {
+    "health_check_interval": 300,
+    "error_threshold": 5,
+    "recovery_time": 60
+  },
+  "enable_streams": true,
+  "enable_identity": true,
+  "enable_tangle_storage": true
+}

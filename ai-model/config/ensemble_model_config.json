@@ -1,0 +1,35 @@
+{
+  "model_dir": "./models",
+  "ensemble_model_filename": "ensemble_risk_model.joblib",
+  "transformer_model_path": "transformer_risk_model.pkl",
+  "gradient_boosting_model_path": "xgboost_risk_model.joblib",
+  "meta_learner": {
+    "type": "logistic_regression",
+    "params": {
+      "C": 1.0,
+      "penalty": "l2",
+      "solver": "lbfgs",
+      "max_iter": 1000,
+      "random_state": 42
+    }
+  },
+  "iota_specific_features": [
+    "transaction_count",
+    "message_count",
+    "balance",
+    "activity_regularity",
+    "first_activity_days",
+    "native_tokens_count",
+    "cross_layer_transfers",
+    "identity_verification",
+    "wallet_balance",
+    "collateral_ratio",
+    "repayment_ratio"
+  ],
+  "target_column": "default_risk",
+  "test_size": 0.2,
+  "random_state": 42,
+  "threshold": 0.5,
+  "use_uncertainty": true,
+  "calibration_method": "isotonic"
+}

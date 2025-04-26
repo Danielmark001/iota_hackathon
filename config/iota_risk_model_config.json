@@ -4,9 +4,6 @@
   "gradient_boosting_model_filename": "xgboost_risk_model.joblib",
   "transformer_model_filename": "transformer_risk_model.pkl",
   "rl_model_filename": "rl_fine_tuner.h5",
-  "ensemble_config_path": "config/ensemble_model_config.json",
-  "gradient_boosting_config_path": "config/gradient_boosting_config.json",
-  "reinforcement_learning_config_path": "config/reinforcement_learning_config.json",
   "iota_feature_weights": {
     "transaction_count": 0.1,
     "message_count": 0.05,
@@ -24,19 +21,5 @@
   "identity_verification_bonus": 15,
   "cross_layer_activity_factor": 0.2,
   "min_iota_transactions": 5,
-  "risk_class_thresholds": [20, 40, 60, 80],
-  "force_mainnet": true,
-  "cross_layer_patterns": {
-    "enable_detection": true,
-    "importance_factor": 0.3,
-    "detection_thresholds": {
-      "l1_to_l2_transfers": 3,
-      "l2_to_l1_transfers": 3,
-      "time_between_transfers": 86400
-    }
-  },
-  "model_update_frequency": {
-    "days": 7,
-    "min_new_samples": 50
-  }
+  "risk_class_thresholds": [20, 40, 60, 80]
 }

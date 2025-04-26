@@ -1,0 +1,43 @@
+{
+  "model_dir": "models",
+  "pattern_database_path": "data/pattern_database.json",
+  "default_pattern_weights": {
+    "irregular_activity": 0.2,
+    "increasing_debt": 0.2,
+    "declining_repayments": 0.25,
+    "collateral_withdrawals": 0.15,
+    "cross_chain_transfers": 0.1,
+    "volatility_correlation": 0.1
+  },
+  "anomaly_detection_threshold": 0.75,
+  "min_transaction_history": 5,
+  "analysis_period_days": 90,
+  "pattern_update_interval": 86400,
+  "warning_thresholds": {
+    "high": 0.7,
+    "medium": 0.5,
+    "low": 0.25
+  },
+  "default_indicators": {
+    "repayment_gaps": {
+      "weight": 0.3,
+      "max_gap_days": 30
+    },
+    "collateral_reduction": {
+      "weight": 0.25,
+      "threshold": 0.1
+    },
+    "debt_increase": {
+      "weight": 0.2,
+      "threshold": 0.15
+    },
+    "market_stress_correlation": {
+      "weight": 0.15,
+      "lookback_days": 30
+    },
+    "activity_anomalies": {
+      "weight": 0.1
+    }
+  },
+  "iota_connection_config": "config/iota_connection_config.json"
+}

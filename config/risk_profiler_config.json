@@ -1,0 +1,20 @@
+{
+  "model_dir": "models",
+  "feature_config_path": "config/feature_config.json",
+  "risk_model_config": "config/iota_risk_model_config.json",
+  "collateralization_config": "config/collateralization_config.json",
+  "liquidation_config": "config/liquidation_config.json",
+  "behavioral_config": "config/behavioral_config.json",
+  "iota_connection_config": "config/iota_connection_config.json",
+  "cache_ttl": 3600,
+  "default_risk_threshold": 50,
+  "high_risk_threshold": 70,
+  "low_risk_threshold": 30,
+  "feature_weights": {
+    "transaction_history": 0.3,
+    "collateral_quality": 0.2,
+    "repayment_history": 0.25,
+    "market_correlation": 0.15,
+    "behavioral_patterns": 0.1
+  }
+}

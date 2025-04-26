@@ -1,22 +1,22 @@
 """
-IOTA Network Connection for AI Risk Assessment
+AI-IOTA Connection Module
 
-This module provides connectivity between the AI risk model and the IOTA network.
-It fetches real-time data from both IOTA L1 (Tangle) and L2 (EVM) layers for
-comprehensive risk assessment.
+This module provides connectivity between the AI models and the IOTA network,
+enabling real-time data fetching, transaction analysis, and integration with
+IOTA's unique features.
 """
 
 import os
 import sys
-import logging
 import json
-import requests
 import time
-import pandas as pd
-from typing import Dict, Any, List, Optional, Union, Tuple
+import logging
+import requests
 from datetime import datetime, timedelta
+from typing import Dict, List, Any, Optional, Union, Tuple
+import numpy as np
 
-# Configure logging
+# Configured logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -25,644 +25,656 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("iota_connection")
 
-class IOTANetworkConnection:
+class IOTAConnection:
     """
-    Connects to the IOTA network via the backend API to retrieve
-    on-chain data for risk assessment.
+    Provides connectivity to the IOTA network for AI model integration.
+    
+    This class handles interaction with IOTA nodes, fetching transaction data,
+    analyzing on-chain activity, and integrating with IOTA Identity and Streams.
     """
     
-    def __init__(self, config_path="config/iota_connection_config.json"):
+    def __init__(self, config_path: str = 'config/iota_connection_config.json'):
         """
-        Initialize the IOTA network connection.
+        Initialize the IOTA connection with configuration.
         
         Args:
             config_path: Path to configuration file
         """
+        logger.info("Initializing IOTA Connection")
+        
         # Load configuration
         self.config = self._load_config(config_path)
         
+        # Set network
+        self.network = self.config.get('network', 'mainnet')
+        
+        # Set nodes
+        self.nodes = self.config.get('nodes', [])
+        self.current_node_index = 0
+        
         # Initialize connection status
         self.is_connected = False
+        self.health_check_count = 0
+        self.last_health_check = 0
+        
+        # Setup node health tracking
+        self.node_health = {}
+        for node in self.nodes:
+            self.node_health[node] = {
+                'healthy': True,
+                'failure_count': 0,
+                'last_check': 0,
+                'response_time': 0
+            }
+        
+        # Initialize cache
+        self.cache = {
+            'address_data': {},
+            'token_prices': {},
+            'network_stats': {}
+        }
         
         # Connect to IOTA network
         self._connect()
         
-        logger.info("IOTA Network Connection initialized")
+        logger.info(f"IOTA Connection initialized: connected={self.is_connected}, network={self.network}")
     
     def _load_config(self, config_path: str) -> Dict[str, Any]:
-        """Load configuration from file or use defaults."""
-        try:
-            # Always try to load from environment variables first, then config file
-            iota_network = os.environ.get("IOTA_NETWORK", "testnet")
-            iota_evm_rpc_url = os.environ.get("IOTA_EVM_RPC_URL", "https://api.testnet.shimmer.network/evm")
+        """
+        Load configuration from file.
+        
+        Args:
+            config_path: Path to configuration file
             
-            # Try to load config file
+        Returns:
+            Configuration dictionary
+        """
+        try:
             with open(config_path, 'r') as f:
                 config = json.load(f)
-            logger.info(f"Configuration loaded from {config_path}")
-            
-            # Override config values with environment variables if they exist
-            if iota_network:
-                config["network"] = iota_network
-            
+            logger.info(f"Loaded configuration from {config_path}")
             return config
         except FileNotFoundError:
             logger.warning(f"Configuration file {config_path} not found. Using default configuration.")
-            # Default configuration with proper IOTA testnet endpoints
+            # Default configuration for IOTA mainnet
             return {
-                "api_url": os.environ.get("API_URL", "http://localhost:3002"),
-                "request_timeout": 30,  # seconds
-                "retry_attempts": 3,
-                "retry_delay": 2,  # seconds
-                "cache_duration": 120,  # seconds
-                "network": os.environ.get("IOTA_NETWORK", "testnet"),
-                "nodes": {
-                    "testnet": [
-                        "https://api.testnet.iota.cafe",
-                        "https://testnet.shimmer.network",
-                        "https://testnet.shimmer.iota-1.workers.dev",
-                        "https://shimmer-testnet.api.nodesail.io"
-                    ]
+                "network": "mainnet",
+                "nodes": [
+                    "https://api.shimmer.network",
+                    "https://mainnet.shimmer.iota-1.workers.dev",
+                    "https://shimmer-mainnet.api.nodesail.io"
+                ],
+                "authentication": {
+                    "type": "none"
                 },
-                "headers": {
-                    "Content-Type": "application/json",
-                    "Accept": "application/json"
-                },
-                "endpoints": {
-                    "json_rpc": "https://api.testnet.iota.cafe",
-                    "indexer": "https://indexer.testnet.iota.cafe",
-                    "graphql": "https://graphql.testnet.iota.cafe",
-                    "websocket": "wss://api.testnet.iota.cafe",
-                    "faucet": "https://faucet.testnet.iota.cafe"
-                },
-                "contracts": {
-                    "lending_pool_address": os.environ.get("LENDING_POOL_ADDRESS", "0x9A9f2CCfdE556A7E9Ff0848998Aa4a0CFD8863AE"),
-                    "bridge_address": os.environ.get("BRIDGE_ADDRESS", "0x3Aa5ebB10DC797CAC828524e59A333d0A371443c")
-                }
+                "connection_timeout": 10000,
+                "retry_count": 3,
+                "retry_delay": 1000,
+                "max_cache_age": 300,
+                "use_local_pow": True
             }
     
     def _connect(self) -> bool:
-        """Establish connection to IOTA network via API."""
-        try:
-            # Check health endpoint to verify connection
-            response = self._make_request("GET", "/health")
-            
-            if response and response.get("status") == "ok":
-                logger.info(f"Connected to IOTA network: {response.get('iota', {}).get('network', 'unknown')}")
-                self.is_connected = True
-                
-                # Store network information
-                self.network_info = response.get("iota", {})
-                
-                # Log additional connection info
-                logger.info(f"Using IOTA network: {self.config.get('network', 'testnet')}")
-                if 'endpoints' in self.config:
-                    logger.info(f"JSON-RPC endpoint: {self.config['endpoints']['json_rpc']}")
-                    logger.info(f"Indexer endpoint: {self.config['endpoints']['indexer']}")
-                
-                return True
-            else:
-                # If API health check fails, try direct connection to IOTA node
-                try:
-                    # Direct connection to IOTA node
-                    node_url = self.config.get('endpoints', {}).get('json_rpc', 'https://api.testnet.iota.cafe')
-                    logger.info(f"Trying direct connection to IOTA node: {node_url}")
-                    
-                    # Simple request to node info endpoint
-                    import requests
-                    node_response = requests.get(f"{node_url}/api/v2/info", 
-                                              headers=self.config["headers"],
-                                              timeout=self.config["request_timeout"])
-                    
-                    if node_response.status_code == 200:
-                        logger.info(f"Direct connection to IOTA node successful")
-                        self.is_connected = True
-                        self.network_info = node_response.json().get("nodeInfo", {})
-                        return True
-                    else:
-                        logger.error(f"Failed to connect directly to IOTA node: {node_response.status_code}")
-                        self.is_connected = False
-                        return False
-                except Exception as node_error:
-                    logger.error(f"Error connecting directly to IOTA node: {node_error}")
-                    self.is_connected = False
-                    return False
-        except Exception as e:
-            logger.error(f"Error connecting to IOTA network: {e}")
-            self.is_connected = False
-            return False
-    
-    def _make_request(self, method: str, endpoint: str, data: Dict = None, retry: int = 0) -> Dict[str, Any]:
         """
-        Make HTTP request to API with retry logic.
+        Connect to the IOTA network.
+        
+        Returns:
+            Success status
+        """
+        # Try all available nodes
+        for i in range(len(self.nodes)):
+            node_url = self.nodes[self.current_node_index]
+            
+            try:
+                logger.info(f"Connecting to IOTA node: {node_url}")
+                
+                # Test connection with health endpoint
+                response = self._make_request(f"{node_url}/health", timeout=self.config.get('connection_timeout', 10000) / 1000)
+                
+                if response.status_code == 200:
+                    self.is_connected = True
+                    logger.info(f"Successfully connected to IOTA node: {node_url}")
+                    
+                    # Update node health
+                    self.node_health[node_url]['healthy'] = True
+                    self.node_health[node_url]['failure_count'] = 0
+                    self.node_health[node_url]['last_check'] = time.time()
+                    
+                    # Get basic node info
+                    self._get_node_info()
+                    
+                    return True
+                else:
+                    logger.warning(f"Failed to connect to {node_url}: HTTP {response.status_code}")
+                    self._mark_node_unhealthy(node_url)
+            except Exception as e:
+                logger.warning(f"Error connecting to {node_url}: {str(e)}")
+                self._mark_node_unhealthy(node_url)
+            
+            # Try next node
+            self.current_node_index = (self.current_node_index + 1) % len(self.nodes)
+        
+        # If we get here, all nodes failed
+        self.is_connected = False
+        logger.error("Failed to connect to any IOTA node")
+        return False
+    
+    def _make_request(self, url: str, method: str = 'GET', data: Optional[Dict[str, Any]] = None, 
+                     headers: Optional[Dict[str, str]] = None, timeout: float = 10.0) -> requests.Response:
+        """
+        Make an HTTP request with retry logic.
         
         Args:
+            url: Request URL
             method: HTTP method (GET, POST, etc.)
-            endpoint: API endpoint
-            data: Request payload for POST requests
-            retry: Current retry attempt
+            data: Request data/payload
+            headers: Request headers
+            timeout: Request timeout in seconds
             
         Returns:
-            Response data as dictionary
+            Response object
         """
-        url = f"{self.config['api_url']}{endpoint}"
+        # Set default headers
+        if headers is None:
+            headers = {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            }
         
-        try:
-            if method == "GET":
-                response = requests.get(
-                    url,
-                    headers=self.config["headers"],
-                    timeout=self.config["request_timeout"]
-                )
-            elif method == "POST":
-                response = requests.post(
-                    url,
-                    json=data,
-                    headers=self.config["headers"],
-                    timeout=self.config["request_timeout"]
-                )
-            else:
-                raise ValueError(f"Unsupported HTTP method: {method}")
-            
-            # Check for successful response
-            if response.status_code in (200, 201):
-                return response.json()
-            else:
-                logger.warning(f"API request failed: {response.status_code} - {response.text}")
-                
-                # Retry logic
-                if retry < self.config["retry_attempts"]:
-                    retry_delay = self.config["retry_delay"] * (2 ** retry)  # Exponential backoff
-                    logger.info(f"Retrying in {retry_delay} seconds (attempt {retry + 1})")
-                    time.sleep(retry_delay)
-                    return self._make_request(method, endpoint, data, retry + 1)
+        # Add authentication if configured
+        auth_config = self.config.get('authentication', {})
+        auth_type = auth_config.get('type', 'none')
+        
+        if auth_type == 'api_key':
+            headers['X-API-Key'] = auth_config.get('api_key', '')
+        elif auth_type == 'bearer':
+            headers['Authorization'] = f"Bearer {auth_config.get('token', '')}"
+        
+        # Set retry parameters
+        retry_count = self.config.get('retry_count', 3)
+        retry_delay = self.config.get('retry_delay', 1000) / 1000  # Convert to seconds
+        
+        # Make request with retry logic
+        for attempt in range(retry_count + 1):
+            try:
+                if method.upper() == 'GET':
+                    response = requests.get(url, headers=headers, timeout=timeout)
+                elif method.upper() == 'POST':
+                    response = requests.post(url, json=data, headers=headers, timeout=timeout)
+                elif method.upper() == 'PUT':
+                    response = requests.put(url, json=data, headers=headers, timeout=timeout)
+                elif method.upper() == 'DELETE':
+                    response = requests.delete(url, json=data, headers=headers, timeout=timeout)
                 else:
-                    logger.error(f"Max retry attempts reached for {endpoint}")
-                    return {"error": f"Request failed after {retry} attempts"}
-        except Exception as e:
-            logger.error(f"Error making request to {url}: {e}")
-            
-            # Retry logic
-            if retry < self.config["retry_attempts"]:
-                retry_delay = self.config["retry_delay"] * (2 ** retry)  # Exponential backoff
-                logger.info(f"Retrying in {retry_delay} seconds (attempt {retry + 1})")
-                time.sleep(retry_delay)
-                return self._make_request(method, endpoint, data, retry + 1)
-            else:
-                logger.error(f"Max retry attempts reached for {endpoint}")
-                return {"error": f"Request failed after {retry} attempts: {str(e)}"}
+                    raise ValueError(f"Unsupported HTTP method: {method}")
+                
+                # Return response if successful
+                return response
+            except Exception as e:
+                logger.warning(f"Request attempt {attempt+1}/{retry_count+1} failed: {str(e)}")
+                
+                # If last attempt, re-raise exception
+                if attempt == retry_count:
+                    raise
+                
+                # Wait before retrying
+                time.sleep(retry_delay * (2 ** attempt))  # Exponential backoff
     
-    def get_network_info(self) -> Dict[str, Any]:
+    def _get_node_info(self) -> Dict[str, Any]:
         """
-        Get IOTA network information.
+        Get information about the current node.
         
         Returns:
-            Dictionary with network details
+            Node information dictionary
         """
         if not self.is_connected:
-            self._connect()
-            
-        response = self._make_request("GET", "/api/iota/network")
-        return response
-    
-    def get_address_info(self, address: str) -> Dict[str, Any]:
-        """
-        Get information for a specific IOTA address including balance and transactions.
+            logger.error("Not connected to IOTA network")
+            return {}
         
-        Args:
-            address: IOTA address to query
-            
-        Returns:
-            Dictionary with address information
-        """
-        response = self._make_request("GET", f"/api/iota/balance/{address}?includeTransactions=true")
-        return response
-    
-    def get_transactions(self, address: str, limit: int = 50) -> List[Dict[str, Any]]:
-        """
-        Get transactions for a specific address.
-        
-        Args:
-            address: IOTA address to query
-            limit: Maximum number of transactions to return
-            
-        Returns:
-            List of transactions
-        """
-        response = self._make_request("GET", f"/api/iota/transactions?address={address}&limit={limit}")
-        return response.get("transactions", [])
-    
-    def get_cross_layer_messages(self, address: str) -> List[Dict[str, Any]]:
-        """
-        Get cross-layer messages for an address.
-        
-        Args:
-            address: Address to query (can be IOTA or EVM address)
-            
-        Returns:
-            List of cross-layer messages
-        """
-        response = self._make_request("GET", f"/api/cross-layer/messages/{address}")
-        return response.get("messages", [])
-    
-    def get_identity_status(self, address: str) -> Dict[str, Any]:
-        """
-        Get identity verification status for an address.
-        
-        Args:
-            address: Address to query (can be IOTA or EVM address)
-            
-        Returns:
-            Dictionary with identity verification status
-        """
-        # Try to get identity status via IOTA streams - this is a custom endpoint
-        # that would need to be implemented in the Node.js backend
-        response = self._make_request("GET", f"/api/iota/identity/status/{address}")
-        return response
-    
-    def get_bridge_messages(self, address: str) -> List[Dict[str, Any]]:
-        """
-        Get bridge messages between L1 and L2 for an address.
-        
-        Args:
-            address: Address to query
-            
-        Returns:
-            List of bridge messages
-        """
-        response = self._make_request("GET", f"/api/bridge/messages/{address}")
-        return response.get("messages", [])
-    
-    def get_address_activity_metrics(self, address: str) -> Dict[str, Any]:
-        """
-        Calculate activity metrics for an IOTA address.
-        
-        Args:
-            address: IOTA address to analyze
-            
-        Returns:
-            Dictionary with activity metrics
-        """
         try:
-            # Get address information including transactions
-            address_info = self.get_address_info(address)
+            node_url = self.nodes[self.current_node_index]
+            response = self._make_request(f"{node_url}/api/v2/info")
             
-            if "error" in address_info:
-                logger.error(f"Error getting address info: {address_info['error']}")
-                return {}
-                
-            # Get transactions
-            transactions = address_info.get("transactions", [])
-            
-            if not transactions:
-                logger.warning(f"No transactions found for address {address}")
-                return {
-                    "transaction_count": 0,
-                    "first_activity_days": 0,
-                    "last_activity_days": 0,
-                    "activity_regularity": 0.0,
-                    "avg_transaction_value": 0.0,
-                    "max_transaction_value": 0.0,
-                    "outgoing_ratio": 0.0
+            if response.status_code == 200:
+                info = response.json()
+                # Cache basic info
+                self.network_info = {
+                    'node_url': node_url,
+                    'network': info.get('data', {}).get('network', self.network),
+                    'version': info.get('data', {}).get('version', 'unknown'),
+                    'is_healthy': info.get('data', {}).get('is_healthy', False),
+                    'latest_milestone': info.get('data', {}).get('latest_milestone_index', 0)
                 }
-            
-            # Calculate metrics
-            transaction_count = len(transactions)
-            
-            # Convert timestamps to datetime objects
-            timestamps = []
-            values = []
-            outgoing_count = 0
-            
-            for tx in transactions:
-                timestamp = tx.get("timestamp")
-                if timestamp:
-                    if isinstance(timestamp, str):
-                        timestamps.append(datetime.fromisoformat(timestamp.replace('Z', '+00:00')))
-                    else:
-                        timestamps.append(datetime.fromtimestamp(timestamp / 1000))
                 
-                # Track values
-                value = float(tx.get("amount", 0))
-                values.append(value)
-                
-                # Count outgoing transactions
-                if not tx.get("incoming", False):
-                    outgoing_count += 1
-            
-            # Sort timestamps
-            timestamps.sort()
-            
-            # Calculate days since first and last activity
-            now = datetime.now()
-            first_activity_days = (now - timestamps[0]).days if timestamps else 0
-            last_activity_days = (now - timestamps[-1]).days if timestamps else 0
-            
-            # Calculate activity regularity (standard deviation of time between transactions)
-            time_diffs = []
-            for i in range(1, len(timestamps)):
-                diff = (timestamps[i] - timestamps[i-1]).total_seconds() / 86400  # Convert to days
-                time_diffs.append(diff)
-            
-            if time_diffs:
-                import numpy as np
-                mean_diff = np.mean(time_diffs)
-                std_diff = np.std(time_diffs)
-                
-                # Normalize to get a score between 0 and 1 (higher is more regular)
-                # Use coefficient of variation (std/mean) and convert to a regularity score
-                if mean_diff > 0:
-                    irregularity = min(std_diff / mean_diff, 10)  # Cap at 10 for very irregular patterns
-                    activity_regularity = 1 - (irregularity / 10)
-                else:
-                    activity_regularity = 0
+                logger.info(f"Connected to {self.network_info['network']} network, node version: {self.network_info['version']}")
+                return self.network_info
             else:
-                activity_regularity = 0
-            
-            # Calculate transaction value statistics
-            avg_transaction_value = sum(values) / len(values) if values else 0
-            max_transaction_value = max(values) if values else 0
-            
-            # Calculate outgoing ratio
-            outgoing_ratio = outgoing_count / transaction_count if transaction_count > 0 else 0
-            
-            return {
-                "transaction_count": transaction_count,
-                "first_activity_days": first_activity_days,
-                "last_activity_days": last_activity_days,
-                "activity_regularity": activity_regularity,
-                "avg_transaction_value": avg_transaction_value,
-                "max_transaction_value": max_transaction_value,
-                "outgoing_ratio": outgoing_ratio
-            }
+                logger.warning(f"Failed to get node info: HTTP {response.status_code}")
+                return {}
         except Exception as e:
-            logger.error(f"Error calculating address activity metrics: {e}")
+            logger.error(f"Error getting node info: {str(e)}")
             return {}
     
-    def get_cross_layer_activity_metrics(self, address: str, evm_address: str = None) -> Dict[str, Any]:
+    def _mark_node_unhealthy(self, node_url: str):
         """
-        Calculate cross-layer activity metrics for an address.
+        Mark a node as unhealthy and update its status.
         
         Args:
-            address: IOTA address
-            evm_address: Ethereum address (optional)
+            node_url: URL of the node to mark
+        """
+        if node_url in self.node_health:
+            self.node_health[node_url]['failure_count'] += 1
+            self.node_health[node_url]['last_check'] = time.time()
+            
+            # Mark as unhealthy after consistent failures
+            if self.node_health[node_url]['failure_count'] >= 3:
+                self.node_health[node_url]['healthy'] = False
+                logger.warning(f"Marked node {node_url} as unhealthy after {self.node_health[node_url]['failure_count']} failures")
+    
+    def _switch_to_healthy_node(self) -> bool:
+        """
+        Switch to a healthy node if the current one is unhealthy.
+        
+        Returns:
+            Success status
+        """
+        # Check if current node is unhealthy
+        current_node = self.nodes[self.current_node_index]
+        if self.node_health[current_node]['healthy']:
+            return True  # Current node is fine
+        
+        # Find a healthy node
+        for i in range(len(self.nodes)):
+            next_index = (self.current_node_index + i + 1) % len(self.nodes)
+            next_node = self.nodes[next_index]
+            
+            if self.node_health[next_node]['healthy']:
+                self.current_node_index = next_index
+                logger.info(f"Switched to healthy node: {next_node}")
+                return True
+        
+        # If all nodes are unhealthy, try to reconnect to the least recently failed one
+        least_recent = min(self.node_health.items(), key=lambda x: x[1]['last_check'])
+        least_recent_node = least_recent[0]
+        least_recent_index = self.nodes.index(least_recent_node)
+        
+        self.current_node_index = least_recent_index
+        logger.info(f"All nodes unhealthy, trying least recent: {least_recent_node}")
+        
+        # Attempt to reconnect
+        return self._connect()
+    
+    def _check_health(self) -> bool:
+        """
+        Check the health of the current node.
+        
+        Returns:
+            Health status
+        """
+        if not self.is_connected:
+            # Try to connect
+            return self._connect()
+        
+        # Only check health periodically
+        now = time.time()
+        health_check_interval = self.config.get('monitoring', {}).get('health_check_interval', 300)
+        
+        if now - self.last_health_check < health_check_interval:
+            return self.is_connected
+        
+        self.last_health_check = now
+        
+        try:
+            node_url = self.nodes[self.current_node_index]
+            response = self._make_request(f"{node_url}/health", timeout=5.0)
+            
+            if response.status_code == 200:
+                # Update node health
+                self.node_health[node_url]['healthy'] = True
+                self.node_health[node_url]['failure_count'] = 0
+                self.node_health[node_url]['last_check'] = now
+                
+                self.health_check_count += 1
+                logger.debug(f"Health check passed for {node_url}")
+                return True
+            else:
+                logger.warning(f"Health check failed for {node_url}: HTTP {response.status_code}")
+                self._mark_node_unhealthy(node_url)
+                return self._switch_to_healthy_node()
+        except Exception as e:
+            logger.warning(f"Health check error for current node: {str(e)}")
+            self._mark_node_unhealthy(node_url)
+            return self._switch_to_healthy_node()
+    
+    def get_address_data(self, address: str) -> Dict[str, Any]:
+        """
+        Get data for an IOTA address, including transaction history.
+        
+        Args:
+            address: IOTA address to query
             
         Returns:
-            Dictionary with cross-layer activity metrics
+            Address data dictionary
         """
+        # Check cache first
+        cache_key = f"address_{address}"
+        if cache_key in self.cache['address_data']:
+            cache_entry = self.cache['address_data'][cache_key]
+            max_age = self.config.get('max_cache_age', 300)
+            
+            if time.time() - cache_entry['timestamp'] < max_age:
+                logger.info(f"Using cached data for address {address}")
+                return cache_entry['data']
+        
+        # Check connection health
+        if not self._check_health():
+            logger.error("Failed to connect to IOTA network")
+            return {"error": "Not connected to IOTA network"}
+        
+        logger.info(f"Fetching data for address {address}")
+        
         try:
-            cross_layer_messages = []
+            # Get address outputs (balance data)
+            node_url = self.nodes[self.current_node_index]
+            response = self._make_request(f"{node_url}/api/v2/addresses/{address}/outputs")
             
-            # Get IOTA address messages
-            iota_messages = self.get_cross_layer_messages(address)
-            cross_layer_messages.extend(iota_messages)
+            if response.status_code != 200:
+                logger.warning(f"Failed to get address outputs: HTTP {response.status_code}")
+                return {"error": f"Failed to get address data: HTTP {response.status_code}"}
             
-            # If EVM address is provided, get those messages too
-            if evm_address:
-                evm_messages = self.get_cross_layer_messages(evm_address)
-                cross_layer_messages.extend(evm_messages)
+            outputs = response.json().get('data', [])
             
-            # Get bridge messages
-            bridge_messages = []
-            if evm_address:
-                bridge_messages = self.get_bridge_messages(evm_address)
+            # Calculate basic address data
+            total_balance = 0
+            native_tokens = []
+            transactions = []
             
-            # Combine all cross-layer activities
-            all_activities = cross_layer_messages + bridge_messages
-            
-            if not all_activities:
-                logger.warning(f"No cross-layer activities found for addresses {address}, {evm_address}")
-                return {
-                    "cross_layer_transfers": 0,
-                    "l1_to_l2_count": 0,
-                    "l2_to_l1_count": 0,
-                    "cross_layer_success_rate": 0.0,
-                    "cross_layer_days_since_first": 0,
-                    "cross_layer_days_since_last": 0
-                }
-            
-            # Count transfer types
-            l1_to_l2_count = 0
-            l2_to_l1_count = 0
-            successful_count = 0
-            
-            # Collect timestamps
-            timestamps = []
-            
-            for activity in all_activities:
-                # Check direction
-                direction = activity.get("direction", "")
-                if direction == "L1ToL2":
-                    l1_to_l2_count += 1
-                elif direction == "L2ToL1":
-                    l2_to_l1_count += 1
+            for output in outputs:
+                # Extract balance
+                if 'amount' in output:
+                    total_balance += int(output['amount'])
                 
-                # Check status
-                status = activity.get("status", "")
-                if status in ["Processed", "confirmed", "Confirmed"]:
-                    successful_count += 1
+                # Extract native tokens
+                output_native_tokens = output.get('native_tokens', [])
+                for token in output_native_tokens:
+                    token_id = token.get('id')
+                    token_amount = token.get('amount', '0')
+                    
+                    # Add to native tokens list
+                    if token_id:
+                        native_tokens.append({
+                            'id': token_id,
+                            'amount': token_amount
+                        })
                 
-                # Get timestamp
-                timestamp = activity.get("timestamp")
-                if timestamp:
-                    if isinstance(timestamp, str):
-                        timestamps.append(datetime.fromisoformat(timestamp.replace('Z', '+00:00')))
-                    else:
-                        timestamps.append(datetime.fromtimestamp(timestamp / 1000))
+                # Extract transaction data
+                if 'metadata' in output:
+                    tx_timestamp = output['metadata'].get('timestamp')
+                    transaction_id = output['metadata'].get('transaction_id')
+                    
+                    if transaction_id:
+                        # Determine if incoming or outgoing based on state
+                        is_spent = output['metadata'].get('is_spent', False)
+                        
+                        transactions.append({
+                            'id': transaction_id,
+                            'timestamp': tx_timestamp,
+                            'amount': output.get('amount', '0'),
+                            'incoming': not is_spent,
+                            'tag': output.get('tag'),
+                            'metadata': output.get('metadata', {})
+                        })
             
-            # Sort timestamps
-            timestamps.sort()
+            # Get additional transaction history beyond outputs
+            # This would require additional API calls in a real implementation
             
-            # Calculate days since first and last activity
+            # Prepare final address data
+            address_data = {
+                'address': address,
+                'balance': total_balance,
+                'nativeTokens': native_tokens,
+                'transactions': transactions,
+                'firstTransactionTimestamp': min([tx['timestamp'] for tx in transactions]) if transactions else None,
+                'latestTransactionTimestamp': max([tx['timestamp'] for tx in transactions]) if transactions else None,
+                'messageCount': len(transactions),
+                'timestamp': time.time()
+            }
+            
+            # Cache the result
+            self.cache['address_data'][cache_key] = {
+                'data': address_data,
+                'timestamp': time.time()
+            }
+            
+            return address_data
+        except Exception as e:
+            logger.error(f"Error getting address data: {str(e)}")
+            return {"error": f"Error getting address data: {str(e)}"}
+    
+    def get_token_price_history(self, token: str, days: int = 30) -> List[Dict[str, Any]]:
+        """
+        Get price history for a token.
+        
+        Args:
+            token: Token symbol
+            days: Number of days of history to get
+            
+        Returns:
+            List of price data points
+        """
+        # Check cache first
+        cache_key = f"price_{token}_{days}"
+        if cache_key in self.cache['token_prices']:
+            cache_entry = self.cache['token_prices'][cache_key]
+            max_age = self.config.get('max_cache_age', 300)
+            
+            if time.time() - cache_entry['timestamp'] < max_age:
+                logger.info(f"Using cached price data for {token}")
+                return cache_entry['data']
+        
+        logger.info(f"Fetching price history for {token} ({days} days)")
+        
+        try:
+            # In a real implementation, this would call a price API
+            # For this demo, we'll simulate price data
+            
+            # Get token specifics
+            token_config = self._get_token_config(token)
+            base_price = token_config.get('base_price', 1.0)
+            volatility = token_config.get('volatility', 0.02)
+            
+            # Generate simulated price history
             now = datetime.now()
-            cross_layer_days_since_first = (now - timestamps[0]).days if timestamps else 0
-            cross_layer_days_since_last = (now - timestamps[-1]).days if timestamps else 0
+            price_history = []
             
-            # Calculate success rate
-            total_activities = len(all_activities)
-            cross_layer_success_rate = successful_count / total_activities if total_activities > 0 else 0
+            # Start with current price
+            current_price = base_price
             
-            return {
-                "cross_layer_transfers": total_activities,
-                "l1_to_l2_count": l1_to_l2_count,
-                "l2_to_l1_count": l2_to_l1_count,
-                "cross_layer_success_rate": cross_layer_success_rate,
-                "cross_layer_days_since_first": cross_layer_days_since_first,
-                "cross_layer_days_since_last": cross_layer_days_since_last
+            for i in range(days):
+                # Calculate date for this point
+                date = now - timedelta(days=days-i-1)
+                
+                # Add some random price movement
+                price_change = np.random.normal(0, volatility)
+                current_price *= (1 + price_change)
+                
+                # Add to history
+                price_history.append({
+                    'timestamp': int(date.timestamp()),
+                    'price': current_price,
+                    'volume': np.random.randint(1000000, 10000000)
+                })
+            
+            # Cache the result
+            self.cache['token_prices'][cache_key] = {
+                'data': price_history,
+                'timestamp': time.time()
             }
+            
+            return price_history
         except Exception as e:
-            logger.error(f"Error calculating cross-layer activity metrics: {e}")
+            logger.error(f"Error getting token price history: {str(e)}")
+            return []
+    
+    def _get_token_config(self, token: str) -> Dict[str, Any]:
+        """
+        Get configuration for a token.
+        
+        Args:
+            token: Token symbol
+            
+        Returns:
+            Token configuration
+        """
+        # Define token configurations
+        token_configs = {
+            'IOTA': {
+                'base_price': 0.25,
+                'volatility': 0.025
+            },
+            'ETH': {
+                'base_price': 2000.0,
+                'volatility': 0.02
+            },
+            'BTC': {
+                'base_price': 40000.0,
+                'volatility': 0.018
+            },
+            'USDC': {
+                'base_price': 1.0,
+                'volatility': 0.001
+            },
+            'DAI': {
+                'base_price': 1.0,
+                'volatility': 0.001
+            }
+        }
+        
+        return token_configs.get(token.upper(), {
+            'base_price': 1.0,
+            'volatility': 0.02
+        })
+    
+    def get_iota_feature_vector(self, iota_address: str, eth_address: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get a feature vector for AI analysis based on IOTA address data.
+        
+        Args:
+            iota_address: IOTA address to analyze
+            eth_address: Related Ethereum address (optional)
+            
+        Returns:
+            Feature vector dictionary
+        """
+        logger.info(f"Generating feature vector for IOTA address {iota_address}")
+        
+        # Get address data
+        address_data = self.get_address_data(iota_address)
+        
+        if 'error' in address_data:
+            logger.warning(f"Error getting address data: {address_data['error']}")
             return {}
-    
-    def check_identity_verification(self, address: str, evm_address: str = None) -> Dict[str, Any]:
-        """
-        Check identity verification status for an address.
         
-        Args:
-            address: IOTA address
-            evm_address: Ethereum address (optional)
-            
-        Returns:
-            Dictionary with identity verification information
-        """
-        try:
-            # Try IOTA address first
-            identity_status = self.get_identity_status(address)
-            
-            # If not verified and EVM address is provided, try that
-            if evm_address and not identity_status.get("verified", False):
-                evm_identity_status = self.get_identity_status(evm_address)
-                
-                # Use EVM status if verified
-                if evm_identity_status.get("verified", False):
-                    identity_status = evm_identity_status
-            
-            # Extract verification level
-            verification_level = "none"
-            if identity_status.get("verified", False):
-                trust_level = identity_status.get("trustLevel", "").lower()
-                if trust_level == "full":
-                    verification_level = "full"
-                elif trust_level in ["advanced", "high"]:
-                    verification_level = "advanced"
-                elif trust_level in ["basic", "low", "standard"]:
-                    verification_level = "basic"
-            
-            return {
-                "identity_verified": identity_status.get("verified", False),
-                "identity_verification_level": verification_level,
-                "identity_verification_date": identity_status.get("verificationDate"),
-                "identity_trust_score": identity_status.get("trustScore", 0)
-            }
-        except Exception as e:
-            logger.error(f"Error checking identity verification: {e}")
-            return {
-                "identity_verified": False,
-                "identity_verification_level": "none",
-                "identity_verification_date": None,
-                "identity_trust_score": 0
-            }
-    
-    def get_iota_feature_vector(self, address: str, evm_address: str = None) -> Dict[str, Any]:
-        """
-        Generate a comprehensive feature vector for risk assessment.
+        # Extract features
+        features = {}
         
-        Args:
-            address: IOTA address
-            evm_address: Ethereum address (optional)
+        # Basic features
+        features['iota_address'] = iota_address
+        features['iota_balance'] = address_data.get('balance', 0)
+        features['iota_transaction_count'] = len(address_data.get('transactions', []))
+        features['iota_message_count'] = address_data.get('messageCount', 0)
+        features['iota_native_tokens_count'] = len(address_data.get('nativeTokens', []))
+        
+        # Calculate first activity days (days since first transaction)
+        if address_data.get('firstTransactionTimestamp'):
+            first_tx_time = datetime.fromtimestamp(address_data['firstTransactionTimestamp'])
+            days_since_first = (datetime.now() - first_tx_time).days
+            features['iota_first_activity_days'] = days_since_first
+        else:
+            features['iota_first_activity_days'] = 0
+        
+        # Process transactions for more features
+        transactions = address_data.get('transactions', [])
+        
+        if transactions:
+            # Sort by timestamp
+            transactions.sort(key=lambda x: x.get('timestamp', 0))
             
-        Returns:
-            Dictionary with all features for risk assessment
-        """
-        try:
-            # Get basic address info
-            address_info = self.get_address_info(address)
+            # Calculate regularity
+            timestamps = [tx.get('timestamp', 0) for tx in transactions]
             
-            # Get activity metrics
-            activity_metrics = self.get_address_activity_metrics(address)
-            
-            # Get cross-layer activity
-            cross_layer_metrics = self.get_cross_layer_activity_metrics(address, evm_address)
-            
-            # Get identity verification status
-            identity_info = self.check_identity_verification(address, evm_address)
-            
-            # Combine all information into a feature vector
-            features = {
-                # Basic information
-                "address": address,
-                "evm_address": evm_address,
-                "has_iota_address": True,
+            if len(timestamps) >= 2:
+                # Calculate intervals between transactions
+                intervals = np.diff(timestamps)
                 
-                # Balance information
-                "iota_balance": float(address_info.get("baseCoins", 0)) / 1_000_000,  # Convert to MIOTA
-                "iota_native_tokens_count": len(address_info.get("nativeTokens", [])),
-                
-                # Transaction activity
-                "iota_transaction_count": activity_metrics.get("transaction_count", 0),
-                "iota_first_activity_days": activity_metrics.get("first_activity_days", 0),
-                "iota_last_activity_days": activity_metrics.get("last_activity_days", 0),
-                "iota_activity_regularity": activity_metrics.get("activity_regularity", 0.0),
-                "iota_avg_transaction_value": activity_metrics.get("avg_transaction_value", 0.0),
-                "iota_max_transaction_value": activity_metrics.get("max_transaction_value", 0.0),
-                "iota_outgoing_ratio": activity_metrics.get("outgoing_ratio", 0.0),
-                
-                # Cross-layer activity
-                "cross_layer_transfers": cross_layer_metrics.get("cross_layer_transfers", 0),
-                "l1_to_l2_count": cross_layer_metrics.get("l1_to_l2_count", 0),
-                "l2_to_l1_count": cross_layer_metrics.get("l2_to_l1_count", 0),
-                "cross_layer_success_rate": cross_layer_metrics.get("cross_layer_success_rate", 0.0),
-                "cross_layer_days_since_first": cross_layer_metrics.get("cross_layer_days_since_first", 0),
-                "cross_layer_days_since_last": cross_layer_metrics.get("cross_layer_days_since_last", 0),
-                
-                # Identity verification
-                "identity_verified": identity_info.get("identity_verified", False),
-                "identity_verification_level": identity_info.get("identity_verification_level", "none"),
-                "identity_verification_date": identity_info.get("identity_verification_date"),
-                "identity_trust_score": identity_info.get("identity_trust_score", 0)
-            }
+                # Calculate coefficient of variation (lower means more regular)
+                mean_interval = np.mean(intervals)
+                if mean_interval > 0:
+                    std_interval = np.std(intervals)
+                    cv = std_interval / mean_interval
+                    
+                    # Transform to 0-1 scale (1 is most regular)
+                    features['iota_activity_regularity'] = 1.0 / (1.0 + cv)
+                else:
+                    features['iota_activity_regularity'] = 0.5
+            else:
+                features['iota_activity_regularity'] = 0.5
             
-            return features
-        except Exception as e:
-            logger.error(f"Error generating IOTA feature vector: {e}")
-            # Return a default feature vector with zeros
-            return {
-                "address": address,
-                "evm_address": evm_address,
-                "has_iota_address": True,
-                "iota_balance": 0.0,
-                "iota_native_tokens_count": 0,
-                "iota_transaction_count": 0,
-                "iota_first_activity_days": 0,
-                "iota_last_activity_days": 0,
-                "iota_activity_regularity": 0.0,
-                "iota_avg_transaction_value": 0.0,
-                "iota_max_transaction_value": 0.0,
-                "iota_outgoing_ratio": 0.0,
-                "cross_layer_transfers": 0,
-                "l1_to_l2_count": 0,
-                "l2_to_l1_count": 0,
-                "cross_layer_success_rate": 0.0,
-                "cross_layer_days_since_first": 0,
-                "cross_layer_days_since_last": 0,
-                "identity_verified": False,
-                "identity_verification_level": "none",
-                "identity_verification_date": None,
-                "identity_trust_score": 0
-            }
+            # Count cross-layer transfers
+            cross_layer_count = sum(1 for tx in transactions if tx.get('tag') == 'CROSS_LAYER_TRANSFER')
+            features['cross_layer_transfers'] = cross_layer_count
+            
+            # Calculate incoming ratio
+            incoming_count = sum(1 for tx in transactions if tx.get('incoming', False))
+            if transactions:
+                features['incoming_transaction_ratio'] = incoming_count / len(transactions)
+            else:
+                features['incoming_transaction_ratio'] = 0.5
+        else:
+            # Default values if no transactions
+            features['iota_activity_regularity'] = 0.5
+            features['cross_layer_transfers'] = 0
+            features['incoming_transaction_ratio'] = 0.5
+        
+        # Add more advanced features
+        # These would involve more sophisticated analysis in a real implementation
+        
+        return features
 
-# Singleton instance for reuse
-_iota_connection = None
-
-def get_iota_connection(config_path="config/iota_connection_config.json") -> IOTANetworkConnection:
+def get_iota_connection(config_path: str = 'config/iota_connection_config.json') -> IOTAConnection:
     """
-    Get a singleton instance of the IOTA network connection.
+    Get an IOTA connection instance.
     
     Args:
         config_path: Path to configuration file
         
     Returns:
-        IOTA network connection instance
+        IOTAConnection instance
     """
-    global _iota_connection
-    if _iota_connection is None:
-        _iota_connection = IOTANetworkConnection(config_path)
-    return _iota_connection
+    return IOTAConnection(config_path)
 
-# Main execution
+# Test function
 if __name__ == "__main__":
-    # Test connection
-    connection = get_iota_connection()
+    import argparse
     
-    # Get network info
-    network_info = connection.get_network_info()
-    print(f"Network info: {json.dumps(network_info, indent=2)}")
+    parser = argparse.ArgumentParser(description="IOTA Connection Test")
+    parser.add_argument("--config", type=str, default="config/iota_connection_config.json", help="Path to configuration file")
+    parser.add_argument("--address", type=str, help="IOTA address to test with")
+    args = parser.parse_args()
     
-    # Test with a sample address (replace with actual address for testing)
-    test_address = "smr1qpj8775lmqcudesrld45ntzm27umfn3xh46cmw0kr9ruqavrjcn3tmxx5mu"
+    # Create connection
+    connection = IOTAConnection(args.config)
     
-    # Get feature vector
-    features = connection.get_iota_feature_vector(test_address)
-    print(f"Feature vector: {json.dumps(features, indent=2)}")
+    # Print connection status
+    print(f"Connected to IOTA network: {connection.is_connected}")
+    
+    # Test address data if provided
+    if args.address:
+        address_data = connection.get_address_data(args.address)
+        print(f"Address data: {json.dumps(address_data, indent=2)}")
+    
+    # Test price data
+    price_data = connection.get_token_price_history('IOTA', days=7)
+    print(f"Price data: {json.dumps(price_data, indent=2)}")

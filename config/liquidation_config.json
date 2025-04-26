@@ -1,0 +1,48 @@
+{
+  "liquidation_threshold": 1.0,
+  "data_update_interval": 3600,
+  "forecast_days": 7,
+  "monte_carlo_simulations": 1000,
+  "confidence_interval": 0.95,
+  "risk_factor_weights": {
+    "collateral_ratio": 0.35,
+    "market_volatility": 0.25,
+    "price_correlation": 0.15,
+    "user_risk_score": 0.15,
+    "historical_liquidations": 0.1
+  },
+  "market_scenarios": {
+    "normal": {
+      "price_change_mean": 0.0,
+      "price_change_std": 0.02,
+      "volatility_change": 0.0
+    },
+    "bull": {
+      "price_change_mean": 0.02,
+      "price_change_std": 0.025,
+      "volatility_change": -0.1
+    },
+    "bear": {
+      "price_change_mean": -0.02,
+      "price_change_std": 0.035,
+      "volatility_change": 0.2
+    },
+    "extreme_bull": {
+      "price_change_mean": 0.04,
+      "price_change_std": 0.04,
+      "volatility_change": 0.1
+    },
+    "extreme_bear": {
+      "price_change_mean": -0.04,
+      "price_change_std": 0.05,
+      "volatility_change": 0.3
+    },
+    "high_volatility": {
+      "price_change_mean": 0.0,
+      "price_change_std": 0.05,
+      "volatility_change": 0.5
+    }
+  },
+  "iota_connection_config": "config/iota_connection_config.json",
+  "assets": ["IOTA", "ETH", "BTC", "USDC", "DAI"]
+}

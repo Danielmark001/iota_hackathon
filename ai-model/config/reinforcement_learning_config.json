@@ -1,0 +1,44 @@
+{
+  "model_dir": "./models",
+  "model_filename": "rl_fine_tuner.h5",
+  "features": [
+    "transaction_count",
+    "message_count",
+    "balance",
+    "activity_regularity",
+    "first_activity_days",
+    "native_tokens_count",
+    "cross_layer_transfers",
+    "identity_verification",
+    "wallet_balance",
+    "collateral_ratio",
+    "repayment_ratio",
+    "predicted_risk_score",
+    "actual_outcome"
+  ],
+  "state_features": [
+    "transaction_count",
+    "balance",
+    "cross_layer_transfers",
+    "identity_verification",
+    "collateral_ratio",
+    "predicted_risk_score"
+  ],
+  "reward_weights": {
+    "true_positive": 10.0,
+    "true_negative": 5.0,
+    "false_positive": -5.0,
+    "false_negative": -10.0
+  },
+  "learning_rate": 0.001,
+  "discount_factor": 0.95,
+  "batch_size": 32,
+  "epochs": 10,
+  "epsilon_start": 1.0,
+  "epsilon_end": 0.01,
+  "epsilon_decay_steps": 10000,
+  "target_update_frequency": 100,
+  "max_buffer_size": 10000,
+  "min_buffer_size": 1000,
+  "random_state": 42
+}

@@ -1,0 +1,37 @@
+{
+  "base_collateral_ratio": 1.5,
+  "risk_adjustment_factor": 0.1,
+  "volatility_adjustment_factor": 0.5,
+  "min_collateral_ratio": 1.1,
+  "max_collateral_ratio": 3.0,
+  "volatility_update_interval": 3600,
+  "iota_connection_config": "config/iota_connection_config.json",
+  "asset_config": {
+    "IOTA": {
+      "base_volatility": 0.25,
+      "risk_factor": 1.0
+    },
+    "ETH": {
+      "base_volatility": 0.2,
+      "risk_factor": 0.9
+    },
+    "BTC": {
+      "base_volatility": 0.18,
+      "risk_factor": 0.85
+    },
+    "USDC": {
+      "base_volatility": 0.01,
+      "risk_factor": 0.5
+    },
+    "DAI": {
+      "base_volatility": 0.01,
+      "risk_factor": 0.5
+    }
+  },
+  "market_scenario_adjustments": {
+    "bull": -0.1,
+    "neutral": 0,
+    "bear": 0.2,
+    "extreme_volatility": 0.3
+  }
+}

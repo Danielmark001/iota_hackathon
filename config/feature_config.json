@@ -1,0 +1,102 @@
+{
+  "numerical_features": [
+    "wallet_age_days",
+    "transaction_count",
+    "avg_transaction_value",
+    "transaction_frequency",
+    "balance",
+    "balance_volatility",
+    "deposit_count",
+    "total_deposit_value",
+    "avg_deposit_value",
+    "last_deposit_days",
+    "deposit_frequency",
+    "borrow_count",
+    "total_borrow_value",
+    "avg_borrow_value",
+    "last_borrow_days",
+    "borrow_frequency",
+    "repay_count",
+    "total_repay_value",
+    "avg_repay_value",
+    "last_repay_days",
+    "repay_frequency",
+    "withdraw_count",
+    "total_withdraw_value",
+    "avg_withdraw_value",
+    "last_withdraw_days",
+    "withdraw_frequency",
+    "repayment_ratio",
+    "current_risk_score",
+    "cross_chain_networks_count",
+    "cross_chain_tx_count",
+    "cross_chain_volume",
+    "cross_chain_frequency",
+    "iota_transaction_count",
+    "iota_message_count",
+    "iota_native_tokens_count",
+    "iota_activity_regularity",
+    "transaction_regularity",
+    "transaction_growth_rate"
+  ],
+  "categorical_features": [
+    "is_contract",
+    "active_borrows",
+    "using_as_collateral",
+    "has_cross_chain_activity",
+    "identity_verification_level"
+  ],
+  "target_feature": "risk_label",
+  "feature_importance": {
+    "repayment_ratio": 0.25,
+    "balance_volatility": 0.15,
+    "transaction_frequency": 0.10,
+    "borrow_frequency": 0.10,
+    "deposit_frequency": 0.08,
+    "cross_chain_activity": 0.08,
+    "wallet_age_days": 0.05,
+    "active_borrows": 0.05,
+    "using_as_collateral": 0.04,
+    "cross_chain_volume": 0.03,
+    "last_repay_days": 0.03,
+    "avg_transaction_value": 0.02,
+    "is_contract": 0.02
+  },
+  "derived_features": [
+    {
+      "name": "borrow_to_deposit_ratio",
+      "formula": "total_borrow_value / (total_deposit_value + 1)",
+      "default_value": 0
+    },
+    {
+      "name": "collateral_utilization",
+      "formula": "total_borrow_value / (total_deposit_value * using_as_collateral + 1)",
+      "default_value": 0
+    },
+    {
+      "name": "activity_intensity",
+      "formula": "(transaction_count + deposit_count + borrow_count + repay_count + withdraw_count) / (wallet_age_days + 1)",
+      "default_value": 0
+    },
+    {
+      "name": "repayment_promptness",
+      "formula": "1 / (last_repay_days + 1)",
+      "default_value": 0
+    },
+    {
+      "name": "cross_chain_intensity",
+      "formula": "cross_chain_tx_count * cross_chain_frequency",
+      "default_value": 0
+    }
+  ],
+  "feature_scaling": {
+    "balance": {"log_transform": true},
+    "transaction_count": {"log_transform": true},
+    "total_deposit_value": {"log_transform": true},
+    "total_borrow_value": {"log_transform": true},
+    "total_repay_value": {"log_transform": true},
+    "total_withdraw_value": {"log_transform": true},
+    "wallet_age_days": {"log_transform": true},
+    "balance_volatility": {"clip_upper": 10.0}
+  }
+}

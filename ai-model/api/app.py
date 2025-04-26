@@ -1,157 +1,340 @@
 """
-Simple Flask API for risk assessment demo.
+IntelliLend AI Risk Assessment API
+
+This Flask application exposes the ML risk assessment models through a RESTful API,
+allowing seamless integration between the Node.js backend and Python ML models.
 """
 
-from flask import Flask, request, jsonify
 import os
 import sys
-import logging
-import random
-from datetime import datetime
 import json
+import logging
+from flask import Flask, request, jsonify, Response
+from flask_cors import CORS
+import numpy as np
+import time
+import traceback
+
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Import risk model
+from enhanced_iota_risk_model import EnhancedIOTARiskModel, assess_risk_sync
+from ai_iota_connection import get_iota_connection
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("ai_api.log"),
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger(__name__)
 
 # Initialize Flask app
 app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 
-# Set default port
-port = int(os.environ.get('AI_MODEL_PORT', 5000))
+# Initialize risk model
+risk_model = None
 
+def initialize_model():
+    """Initialize the risk assessment model"""
+    global risk_model
+    try:
+        logger.info("Initializing Enhanced IOTA Risk Model...")
+        risk_model = EnhancedIOTARiskModel()
+        logger.info("Risk model initialized successfully")
+        return True
+    except Exception as e:
+        logger.error(f"Error initializing risk model: {e}")
+        logger.error(traceback.format_exc())
+        return False
+
+# Initialize IOTA connection
+def initialize_iota_connection():
+    """Initialize IOTA network connection"""
+    try:
+        logger.info("Initializing IOTA connection...")
+        iota_connection = get_iota_connection()
+        if iota_connection and iota_connection.is_connected:
+            logger.info("Successfully connected to IOTA network")
+            return iota_connection
+        else:
+            logger.warning("Failed to connect to IOTA network")
+            return None
+    except Exception as e:
+        logger.error(f"Error initializing IOTA connection: {e}")
+        logger.error(traceback.format_exc())
+        return None
+
+# Routes
 @app.route('/health', methods=['GET'])
 def health_check():
-    """Health check endpoint."""
+    """Health check endpoint"""
+    global risk_model
+    
+    # Check if risk model is initialized
+    model_status = "initialized" if risk_model is not None else "not initialized"
+    
+    # Check IOTA connection
+    iota_connection = None
+    iota_status = "disconnected"
+    try:
+        iota_connection = get_iota_connection()
+        if iota_connection and iota_connection.is_connected:
+            iota_status = "connected"
+            
+            # Get network information
+            network_info = iota_connection.get_network_info()
+            network_name = network_info.get("network", "unknown")
+        else:
+            network_name = "unknown"
+    except Exception as e:
+        logger.error(f"Error checking IOTA connection: {e}")
+        network_name = "error"
+    
     return jsonify({
-        'status': 'ok',
-        'timestamp': datetime.now().isoformat()
+        "status": "ok",
+        "riskModel": model_status,
+        "iota": {
+            "status": iota_status,
+            "network": network_name
+        },
+        "timestamp": int(time.time())
     })
 
-@app.route('/predict', methods=['POST'])
-def predict():
+@app.route('/api/risk-assessment', methods=['POST'])
+def assess_risk():
     """
-    Predict risk score for a user based on on-chain data.
+    Risk assessment endpoint
+    
+    Expects JSON payload with user data including:
+    - address: Ethereum address
+    - iota_address: IOTA address (optional)
+    - various on-chain and off-chain metrics
+    
+    Returns risk assessment results
     """
+    global risk_model
+    
+    # Initialize model if not already done
+    if risk_model is None:
+        initialize_model()
+    
     try:
-        data = request.get_json()
+        # Get request data
+        data = request.json
         
-        if not data or 'address' not in data:
-            return jsonify({
-                'error': 'Invalid request. Expected address.'
-            }), 400
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
         
-        # For demo purposes, generate a random risk score
-        risk_score = random.randint(20, 80)
+        if "address" not in data:
+            return jsonify({"error": "No address provided"}), 400
         
-        # Get risk category
-        risk_category = get_risk_category(risk_score)
+        logger.info(f"Assessing risk for address: {data['address']}")
         
-        # Generate mock recommendations
-        recommendations = generate_recommendations(risk_score)
+        # Add IOTA address if provided
+        iota_address = data.get("iota_address")
+        if iota_address:
+            logger.info(f"Using IOTA address: {iota_address}")
         
-        # Generate mock top factors
-        top_factors = [
-            {"feature": "collateral_ratio", "importance": 0.35},
-            {"feature": "wallet_activity", "importance": 0.25},
-            {"feature": "repayment_history", "importance": 0.2}
-        ]
+        # Process assessment using synchronous wrapper
+        assessment = assess_risk_sync(data)
         
-        return jsonify({
-            'address': data['address'],
-            'risk_score': risk_score,
-            'risk_category': risk_category,
-            'explanation': {
-                'top_factors': top_factors,
-                'recommendations': recommendations
-            },
-            'timestamp': datetime.now().isoformat()
-        })
+        logger.info(f"Risk assessment completed for {data['address']}: Score = {assessment['riskScore']}")
+        
+        return jsonify(assessment)
     
     except Exception as e:
-        logger.error(f"Error making prediction: {e}")
+        logger.error(f"Error processing risk assessment: {e}")
+        logger.error(traceback.format_exc())
+        
         return jsonify({
-            'error': str(e)
+            "error": "Error processing risk assessment",
+            "message": str(e),
+            "address": data.get("address", "unknown"),
+            "riskScore": 50,  # Default medium risk
+            "riskClass": "Medium Risk",
+            "timestamp": int(time.time())
         }), 500
 
-@app.route('/importance', methods=['GET'])
-def feature_importance():
-    """Get feature importance from the model."""
+@app.route('/api/model/performance', methods=['GET'])
+def model_performance():
+    """Get model performance metrics"""
+    global risk_model
+    
+    # Initialize model if not already done
+    if risk_model is None:
+        initialize_model()
+    
     try:
-        # Mock feature importance data
-        importance = [
-            {"feature": "collateral_ratio", "importance": 0.35},
-            {"feature": "wallet_activity", "importance": 0.25},
-            {"feature": "repayment_history", "importance": 0.2},
-            {"feature": "transaction_volume", "importance": 0.1},
-            {"feature": "account_age", "importance": 0.05},
-            {"feature": "market_correlation", "importance": 0.05}
+        # Get performance metrics
+        # In a real implementation, these would be calculated from historical data
+        # For now, we'll return simulated metrics
+        
+        performance = {
+            "accuracy": 0.87,
+            "precision": 0.85,
+            "recall": 0.90,
+            "f1Score": 0.87,
+            "totalSamples": 1000,
+            "correctPredictions": 870,
+            "truePositives": 450,
+            "falsePositives": 80,
+            "trueNegatives": 420,
+            "falseNegatives": 50,
+            "confusionMatrix": [
+                [450, 80],  # [TP, FP]
+                [50, 420]   # [FN, TN]
+            ],
+            "riskBucketAccuracy": {
+                "veryLow": 0.95,
+                "low": 0.90,
+                "medium": 0.85,
+                "high": 0.80,
+                "veryHigh": 0.75
+            },
+            "defaultRate": 0.05,
+            "riskBins": [
+                {"score": "0-20", "count": 150, "defaultRate": 0.01},
+                {"score": "21-40", "count": 250, "defaultRate": 0.02},
+                {"score": "41-60", "count": 300, "defaultRate": 0.05},
+                {"score": "61-80", "count": 200, "defaultRate": 0.08},
+                {"score": "81-100", "count": 100, "defaultRate": 0.15}
+            ],
+            "lastUpdate": int(time.time())
+        }
+        
+        return jsonify(performance)
+    
+    except Exception as e:
+        logger.error(f"Error getting model performance: {e}")
+        logger.error(traceback.format_exc())
+        
+        return jsonify({
+            "error": "Error getting model performance",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/feature-importance', methods=['GET'])
+def feature_importance():
+    """Get feature importance for the risk model"""
+    global risk_model
+    
+    # Initialize model if not already done
+    if risk_model is None:
+        initialize_model()
+    
+    try:
+        # Get feature importance
+        # In a real implementation, these would be calculated from the model
+        # For now, we'll return simulated feature importance
+        
+        features = [
+            {"feature": "transaction_count", "importance": 0.15, "description": "Number of transactions"},
+            {"feature": "balance", "importance": 0.12, "description": "Account balance"},
+            {"feature": "activity_regularity", "importance": 0.11, "description": "Regularity of user activity"},
+            {"feature": "cross_layer_transfers", "importance": 0.10, "description": "Cross-layer transaction activity"},
+            {"feature": "identity_verification", "importance": 0.09, "description": "Identity verification status"},
+            {"feature": "wallet_balance", "importance": 0.08, "description": "Wallet balance"},
+            {"feature": "collateral_ratio", "importance": 0.07, "description": "Ratio of collateral to borrows"},
+            {"feature": "native_tokens_count", "importance": 0.06, "description": "Number of different tokens held"},
+            {"feature": "first_activity_days", "importance": 0.05, "description": "Days since first activity"},
+            {"feature": "message_count", "importance": 0.04, "description": "Number of messages sent"}
         ]
         
         return jsonify({
-            'importance': importance,
-            'timestamp': datetime.now().isoformat()
+            "features": features,
+            "modelVersion": "v2.0",
+            "lastUpdate": int(time.time())
         })
+    
     except Exception as e:
         logger.error(f"Error getting feature importance: {e}")
+        logger.error(traceback.format_exc())
+        
         return jsonify({
-            'error': str(e)
+            "error": "Error getting feature importance",
+            "message": str(e)
         }), 500
 
-def get_risk_category(score):
-    """Map numerical risk score to a category."""
-    if score < 30:
-        return "Low Risk"
-    elif score < 60:
-        return "Medium Risk"
-    else:
-        return "High Risk"
-
-def generate_recommendations(risk_score):
-    """Generate personalized recommendations based on risk score."""
-    recommendations = []
+@app.route('/api/recommendations/<address>', methods=['GET'])
+def get_recommendations(address):
+    """Get personalized recommendations for a user"""
+    global risk_model
     
-    if risk_score > 70:
-        recommendations.append({
-            "title": "Increase Collateral",
-            "description": "Your risk score is high. Adding more collateral can significantly reduce your risk and lower your interest rate.",
-            "impact": "high"
-        })
+    # Initialize model if not already done
+    if risk_model is None:
+        initialize_model()
+    
+    try:
+        if not address:
+            return jsonify({"error": "No address provided"}), 400
         
-    if risk_score > 50:
-        recommendations.append({
-            "title": "Diversify Your Collateral",
-            "description": "Using different asset types as collateral can reduce your risk score.",
-            "impact": "medium"
+        logger.info(f"Getting recommendations for address: {address}")
+        
+        # For now, we'll return simulated recommendations
+        # In a real implementation, these would be derived from the model
+        
+        recommendations = [
+            {
+                "title": "Increase Collateral Ratio",
+                "description": "Adding more collateral will reduce your risk score and improve borrowing terms.",
+                "impact": "high",
+                "actionType": "depositCollateral"
+            },
+            {
+                "title": "Complete Identity Verification",
+                "description": "Verify your identity using IOTA Identity to get better borrowing rates.",
+                "impact": "high",
+                "actionType": "verifyIdentity"
+            },
+            {
+                "title": "Increase IOTA Network Activity",
+                "description": "More transactions on the IOTA network will improve your on-chain reputation.",
+                "impact": "medium",
+                "actionType": "increaseActivity"
+            },
+            {
+                "title": "Try Cross-Layer Transfers",
+                "description": "Demonstrate blockchain expertise by using both L1 and L2 layers.",
+                "impact": "medium",
+                "actionType": "crossLayerTransfer"
+            },
+            {
+                "title": "Balance Asset Distribution",
+                "description": "Diversify your assets across multiple token types for better risk profile.",
+                "impact": "low",
+                "actionType": "diversifyAssets"
+            }
+        ]
+        
+        return jsonify({
+            "address": address,
+            "recommendations": recommendations,
+            "timestamp": int(time.time())
         })
     
-    if risk_score > 40:
-        recommendations.append({
-            "title": "Improve Repayment History",
-            "description": "Your past repayment performance affects your risk score. Consider setting up automatic repayments.",
-            "impact": "high"
-        })
-    
-    if risk_score > 30:
-        recommendations.append({
-            "title": "Stabilize Your Wallet Activity",
-            "description": "High volatility in your wallet balance is increasing your risk score.",
-            "impact": "medium"
-        })
-    
-    # Ensure we always have at least one recommendation
-    if not recommendations:
-        recommendations.append({
-            "title": "Maintain Current Status",
-            "description": "Your risk profile is good. Continue maintaining your current behavior.",
-            "impact": "low"
-        })
-    
-    return recommendations
+    except Exception as e:
+        logger.error(f"Error getting recommendations for {address}: {e}")
+        logger.error(traceback.format_exc())
+        
+        return jsonify({
+            "error": "Error getting recommendations",
+            "message": str(e),
+            "address": address
+        }), 500
 
 if __name__ == '__main__':
-    logger.info(f"Starting AI model API server on port {port}")
-    app.run(host='0.0.0.0', port=port)
+    # Initialize model
+    initialize_model()
+    
+    # Initialize IOTA connection
+    initialize_iota_connection()
+    
+    # Run Flask app
+    port = int(os.environ.get('AI_API_PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
