@@ -1,0 +1,53 @@
+{
+    "update_interval_seconds": 300,
+    "assets": ["IOTA", "ETH", "BTC", "USDT"],
+    "default_lookback_days": 30,
+    "data_sources": {
+        "price": {
+            "primary": "coingecko",
+            "backup": "binance",
+            "api_url": "https://api.coingecko.com/api/v3"
+        },
+        "on_chain": {
+            "primary": "iota_node",
+            "backup": "tangle_explorer",
+            "iota_node_url": "https://api.lb-0.h.chrysalis-devnet.iota.cafe"
+        },
+        "news": {
+            "primary": "cryptopanic",
+            "backup": "cryptocontrol",
+            "api_url": "https://cryptopanic.com/api/v1"
+        },
+        "social": {
+            "primary": "twitter",
+            "backup": "reddit",
+            "api_url": "https://api.twitter.com/2"
+        }
+    },
+    "time_series_config": {
+        "forecast_days": 7,
+        "model_type": "lstm",
+        "confidence_interval": 0.95,
+        "retrain_interval_days": 7
+    },
+    "correlation_config": {
+        "metrics": ["price", "volume", "volatility", "sentiment"],
+        "loan_data_lookback_days": 90,
+        "min_correlation_threshold": 0.3,
+        "lag_days": 30
+    },
+    "volatility_config": {
+        "model_type": "garch",
+        "forecast_days": 7,
+        "confidence_interval": 0.95,
+        "retrain_interval_days": 7,
+        "rolling_window": 30,
+        "garch_p": 1,
+        "garch_q": 1
+    },
+    "sentiment_config": {
+        "api_key": "",
+        "update_interval_hours": 6,
+        "sentiment_impact_weight": 0.3
+    }
+}
