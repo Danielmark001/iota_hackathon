@@ -9,6 +9,7 @@ This document provides instructions for setting up and running the IntelliLend d
 IntelliLend is an intelligent lending protocol that leverages IOTA's unique architecture and AI to revolutionize DeFi lending. It uses machine learning to assess borrower risk, optimize interest rates, and enhance the security and efficiency of lending operations.
 
 Key features:
+
 - **AI Risk Assessment**: Advanced machine learning models analyze on-chain activity to determine personalized risk scores
 - **Privacy-Preserving Identity**: Zero-knowledge proofs for secure user verification without compromising privacy
 - **Cross-Chain Liquidity**: Leverage IOTA's cross-chain capabilities for optimal capital efficiency
@@ -17,7 +18,7 @@ Key features:
 
 ### System Requirements
 
-- Node.js v16+ 
+- Node.js v16+
 - npm v8+
 - Python 3.8+ (for AI model)
 - Git
@@ -25,36 +26,41 @@ Key features:
 ### Installation
 
 1. Clone the repository:
+
    ```
-   git clone https://github.com/yourusername/iota-hackathon.git
+   git clone https://github.com/Danielmark001/iota_hackathon.git
    cd iota-hackathon
    ```
 
 2. Install dependencies:
+
    ```
    npm install
    ```
 
 3. Install Python dependencies (for AI model):
+
    ```
    pip install -r ai-model/requirements.txt
    ```
 
 4. Configure environment:
+
    ```
    cp .env.example .env
    ```
-   
+
    Edit the `.env` file with your settings:
+
    ```
    # IOTA Network Configuration
    IOTA_EVM_RPC_URL=http://localhost:8545
-   
+
    # Contract Addresses (optional, demo works with mock data if not provided)
    LENDING_POOL_ADDRESS=
    ZK_VERIFIER_ADDRESS=
    CROSS_CHAIN_LIQUIDITY_ADDRESS=
-   
+
    # Demo Configuration
    USE_MOCKS=true
    ```
@@ -70,6 +76,7 @@ node scripts/demo.js
 ```
 
 This interactive demo will walk you through:
+
 - AI-powered risk assessment
 - Privacy-preserving identity verification
 - Cross-chain liquidity management
@@ -83,11 +90,13 @@ You can explore individual features or run a complete end-to-end scenario.
 To run the web frontend:
 
 1. Start the backend server:
+
    ```
    npm run server
    ```
 
 2. In a new terminal, start the frontend:
+
    ```
    npm run frontend
    ```

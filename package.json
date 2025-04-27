@@ -65,7 +65,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/yourusername/iota-hackathon.git"
+    "url": "git+https://github.com/Danielmark001/iota_hackathon.git"
   },
   "keywords": [
     "iota",
@@ -79,7 +79,7 @@
   "author": "Your Team",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/yourusername/iota-hackathon/issues"
+    "url": "https://github.com/Danielmark001/iota_hackathon/issues"
   },
-  "homepage": "https://github.com/yourusername/iota-hackathon#readme"
+  "homepage": "https://github.com/Danielmark001/iota_hackathon#readme"
 }
