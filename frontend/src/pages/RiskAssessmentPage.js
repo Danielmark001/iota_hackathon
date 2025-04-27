@@ -39,6 +39,7 @@ import {
   SwapHoriz,
   CalendarToday,
   ArrowForward,
+  OpenInNew as OpenInNewIcon,
 } from '@mui/icons-material';
 import { Link as RouterLink } from 'react-router-dom';
 
@@ -400,6 +401,127 @@ const RiskAssessmentPage = () => {
         
         {/* Right column - Recommendations and actions */}
         <Grid item xs={12} md={5}>
+          {/* IOTA Integration Status - NEW COMPONENT */}
+          <Paper elevation={2} sx={{ p: 3, borderRadius: 2, mb: 4 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+              <img 
+                src="/iota-logo.svg" 
+                alt="IOTA" 
+                style={{ height: 24, marginRight: 8 }} 
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                }}
+              />
+              <Typography variant="h5">
+                IOTA Integration
+              </Typography>
+            </Box>
+            <Divider sx={{ mb: 3 }} />
+            
+            {userProfile ? (
+              <Grid container spacing={2}>
+                <Grid item xs={12}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="subtitle1">IOTA Address</Typography>
+                    <Chip 
+                      label={userProfile.iotaAddress ? "Connected" : "Not Connected"} 
+                      color={userProfile.iotaAddress ? "success" : "error"}
+                      size="small"
+                    />
+                  </Box>
+                  
+                  {userProfile.iotaAddress ? (
+                    <Box>
+                      <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
+                        {userProfile.iotaAddress}
+                      </Typography>
+                      <Button 
+                        variant="text" 
+                        size="small" 
+                        startIcon={<OpenInNewIcon />}
+                        component="a"
+                        href={`https://explorer.shimmer.network/testnet/addr/${userProfile.iotaAddress}`}
+                        target="_blank"
+                        sx={{ mt: 1 }}
+                      >
+                        View on Explorer
+                      </Button>
+                    </Box>
+                  ) : (
+                    <Box sx={{ textAlign: 'center', py: 1 }}>
+                      <Typography variant="body2" color="text.secondary" paragraph>
+                        Connect your IOTA address to improve your risk assessment with cross-layer data.
+                      </Typography>
+                      <Button 
+                        variant="contained" 
+                        size="small"
+                        component={RouterLink}
+                        to="/iota-wallet"
+                      >
+                        Connect IOTA Address
+                      </Button>
+                    </Box>
+                  )}
+                </Grid>
+                
+                <Grid item xs={12}>
+                  <Divider sx={{ my: 1 }} />
+                </Grid>
+                
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary">IOTA Activity</Typography>
+                  <Typography variant="h6">{userProfile.iotaTransactionCount || 0}</Typography>
+                  <Typography variant="caption" color="text.secondary">Transactions</Typography>
+                </Grid>
+                
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary">Cross-Layer</Typography>
+                  <Typography variant="h6">{userProfile.crossLayerTransfers || 0}</Typography>
+                  <Typography variant="caption" color="text.secondary">Transfers</Typography>
+                </Grid>
+                
+                <Grid item xs={12}>
+                  <Divider sx={{ my: 1 }} />
+                </Grid>
+                
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>Cross-Layer Benefits</Typography>
+                  <Box display="flex" alignItems="center">
+                    <LinearProgress 
+                      variant="determinate" 
+                      value={Math.min(100, (userProfile.crossLayerTransfers || 0) * 20)} 
+                      sx={{ flex: 1, height: 8, borderRadius: 4 }}
+                    />
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      {Math.min(100, (userProfile.crossLayerTransfers || 0) * 20)}%
+                    </Typography>
+                  </Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                    {userProfile.crossLayerTransfers > 0 
+                      ? `Cross-layer activity reduces your risk score by ${userProfile.crossLayerTransfers * 2} points` 
+                      : "No cross-layer benefits yet"}
+                  </Typography>
+                </Grid>
+                
+                <Grid item xs={12} sx={{ mt: 1 }}>
+                  <Button
+                    variant="outlined"
+                    fullWidth
+                    startIcon={<SwapHoriz />}
+                    component={RouterLink}
+                    to="/cross-layer"
+                  >
+                    Cross-Layer Dashboard
+                  </Button>
+                </Grid>
+              </Grid>
+            ) : (
+              <Box sx={{ py: 3, textAlign: 'center' }}>
+                <CircularProgress />
+              </Box>
+            )}
+          </Paper>
+          
           {/* Recommendations */}
           <Paper elevation={2} sx={{ p: 3, borderRadius: 2, mb: 4 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -467,6 +589,195 @@ const RiskAssessmentPage = () => {
             ) : (
               <Box sx={{ py: 3, textAlign: 'center' }}>
                 <CircularProgress />
+              </Box>
+            )}
+          </Paper>
+          
+          {/* Cross-Layer Transaction Visualization - NEW COMPONENT */}
+          <Paper elevation={2} sx={{ p: 3, borderRadius: 2, mb: 4 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+              <SwapHoriz color="primary" sx={{ mr: 1 }} />
+              <Typography variant="h5">
+                Cross-Layer Risk Analysis
+              </Typography>
+            </Box>
+            <Divider sx={{ mb: 3 }} />
+            
+            {userProfile && userProfile.iotaAddress ? (
+              <Box>
+                <Grid container spacing={1} sx={{ mb: 3 }}>
+                  <Grid item xs={6}>
+                    <Paper variant="outlined" sx={{ p: 1.5, textAlign: 'center' }}>
+                      <Typography variant="body2" color="text.secondary">IOTA L1</Typography>
+                      <Typography variant="h6" color="primary">
+                        {userProfile.iotaRiskScore || 'N/A'}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">Risk Score</Typography>
+                    </Paper>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Paper variant="outlined" sx={{ p: 1.5, textAlign: 'center' }}>
+                      <Typography variant="body2" color="text.secondary">EVM L2</Typography>
+                      <Typography variant="h6" color="primary">
+                        {userProfile.evmRiskScore || 'N/A'}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">Risk Score</Typography>
+                    </Paper>
+                  </Grid>
+                </Grid>
+                
+                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  Transaction Distribution
+                </Typography>
+                
+                <Box sx={{ display: 'flex', height: 60, mb: 1, bgcolor: 'background.default', borderRadius: 1, overflow: 'hidden' }}>
+                  {/* L1 Transactions (IOTA) */}
+                  <Box 
+                    sx={{ 
+                      flex: userProfile.iotaTransactionCount || 1, 
+                      bgcolor: theme.palette.primary.main,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    <Typography variant="caption" color="primary.contrastText">
+                      L1: {userProfile.iotaTransactionCount || 0}
+                    </Typography>
+                  </Box>
+                  
+                  {/* L2 Transactions (EVM) */}
+                  <Box 
+                    sx={{ 
+                      flex: userProfile.evmTransactionCount || 1, 
+                      bgcolor: theme.palette.secondary.main,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    <Typography variant="caption" color="secondary.contrastText">
+                      L2: {userProfile.evmTransactionCount || 0}
+                    </Typography>
+                  </Box>
+                </Box>
+                
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+                  <Typography variant="caption" color="primary.main">IOTA L1</Typography>
+                  <Typography variant="caption" color="secondary.main">EVM L2</Typography>
+                </Box>
+                
+                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  Cross-Layer Transfers
+                </Typography>
+                
+                <Box sx={{ height: 100, mb: 2, position: 'relative', bgcolor: 'background.default', borderRadius: 1, padding: 1 }}>
+                  {/* L1->L2 Transfers */}
+                  {Array.from({ length: Math.min(5, userProfile.l1ToL2Transfers || 0) }).map((_, index) => (
+                    <Box 
+                      key={`l1-to-l2-${index}`}
+                      sx={{ 
+                        position: 'absolute',
+                        top: 15 + index * 14,
+                        left: '10%',
+                        width: '40%',
+                        height: 10,
+                        display: 'flex',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <Box sx={{ flex: 1, height: 2, bgcolor: 'success.main' }} />
+                      <ArrowForward color="success" sx={{ fontSize: 14 }} />
+                    </Box>
+                  ))}
+                  
+                  {/* L2->L1 Transfers */}
+                  {Array.from({ length: Math.min(5, userProfile.l2ToL1Transfers || 0) }).map((_, index) => (
+                    <Box 
+                      key={`l2-to-l1-${index}`}
+                      sx={{ 
+                        position: 'absolute',
+                        bottom: 15 + index * 14,
+                        right: '10%',
+                        width: '40%',
+                        height: 10,
+                        display: 'flex',
+                        alignItems: 'center',
+                        flexDirection: 'row-reverse'
+                      }}
+                    >
+                      <Box sx={{ flex: 1, height: 2, bgcolor: 'info.main' }} />
+                      <ArrowForward color="info" sx={{ fontSize: 14, transform: 'rotate(180deg)' }} />
+                    </Box>
+                  ))}
+                  
+                  {/* L1 Node */}
+                  <Box 
+                    sx={{ 
+                      position: 'absolute',
+                      top: '50%',
+                      left: '5%',
+                      transform: 'translateY(-50%)',
+                      width: 40,
+                      height: 40,
+                      borderRadius: '50%',
+                      bgcolor: theme.palette.primary.main,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    <Typography variant="caption" color="primary.contrastText">L1</Typography>
+                  </Box>
+                  
+                  {/* L2 Node */}
+                  <Box 
+                    sx={{ 
+                      position: 'absolute',
+                      top: '50%',
+                      right: '5%',
+                      transform: 'translateY(-50%)',
+                      width: 40,
+                      height: 40,
+                      borderRadius: '50%',
+                      bgcolor: theme.palette.secondary.main,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    <Typography variant="caption" color="secondary.contrastText">L2</Typography>
+                  </Box>
+                </Box>
+                
+                <Grid container spacing={1}>
+                  <Grid item xs={6}>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: 'success.main', mr: 1 }} />
+                      <Typography variant="caption" color="text.secondary">L1→L2: {userProfile.l1ToL2Transfers || 0}</Typography>
+                    </Box>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: 'info.main', mr: 1 }} />
+                      <Typography variant="caption" color="text.secondary">L2→L1: {userProfile.l2ToL1Transfers || 0}</Typography>
+                    </Box>
+                  </Grid>
+                </Grid>
+              </Box>
+            ) : (
+              <Box sx={{ textAlign: 'center', py: 2 }}>
+                <Typography variant="body2" color="text.secondary" paragraph>
+                  Connect your IOTA address to see cross-layer risk analysis.
+                </Typography>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  component={RouterLink}
+                  to="/iota-wallet"
+                >
+                  Connect IOTA Wallet
+                </Button>
               </Box>
             )}
           </Paper>

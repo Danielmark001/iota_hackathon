@@ -25,7 +25,7 @@
   "cross_layer_activity_factor": 0.2,
   "min_iota_transactions": 5,
   "risk_class_thresholds": [20, 40, 60, 80],
-  "force_mainnet": true,
+  "force_mainnet": false,
   "cross_layer_patterns": {
     "enable_detection": true,
     "importance_factor": 0.3,

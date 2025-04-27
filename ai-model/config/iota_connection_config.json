@@ -1,16 +1,10 @@
 {
-  "network": "mainnet",
-  "nodes": {
-    "testnet": [
-      "https://api.testnet.shimmer.network",
-      "https://shimmer-testnet.api.nodesail.io"
-    ],
-    "mainnet": [
-      "https://api.shimmer.network",
-      "https://shimmer-mainnet.api.nodesail.io",
-      "https://shimmer.api.iotaichi.network"
-    ]
-  },
+  "network": "testnet",
+  "nodes": [
+    "https://api.testnet.shimmer.network",
+    "https://testnet.shimmer.iota-1.workers.dev",
+    "https://shimmer-testnet.api.nodesail.io"
+  ],
   "evm_rpc_url": "https://api.shimmer.network/evm",
   "request_timeout": 30,
   "retry_attempts": 5,

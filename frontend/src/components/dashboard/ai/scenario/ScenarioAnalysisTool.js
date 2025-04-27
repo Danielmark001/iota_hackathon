@@ -62,7 +62,8 @@ import {
   Tooltip as RechartsTooltip,
   Legend,
   ReferenceLine,
-  Scatter
+  Scatter,
+  Cell
 } from 'recharts';
 
 // Simulated API call to get scenario analysis

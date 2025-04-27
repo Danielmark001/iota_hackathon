@@ -607,10 +607,99 @@ function verifyBulletproof(proof) {
   }
 }
 
+/**
+ * Create a zero-knowledge proof for risk assessment data
+ * @param {Object} riskAssessment - Risk assessment data
+ * @param {Array} revealedFactors - Risk factors to reveal (empty array to keep all private)
+ * @param {Object} options - Proof options
+ * @returns {Object} Privacy-preserving risk proof
+ */
+function createRiskAssessmentProof(riskAssessment, revealedFactors = [], options = {}) {
+  try {
+    logger.info(`Creating ZK proof for risk assessment: ${riskAssessment.address}`);
+    
+    // Default to Pedersen commitments
+    const scheme = options.scheme || ZkProofScheme.PEDERSEN;
+    logger.info(`Using ZK proof scheme: ${scheme}`);
+    
+    // Format risk assessment as a credential-like object for proof generation
+    const riskCredential = {
+      id: `risk-${riskAssessment.address}-${Date.now()}`,
+      type: ['RiskAssessment', 'VerifiableCredential'],
+      issuer: riskAssessment.issuerId || 'platform',
+      issuanceDate: new Date().toISOString(),
+      credentialSubject: {
+        id: riskAssessment.address,
+        riskScore: riskAssessment.riskScore,
+        riskClass: riskAssessment.riskClass,
+        confidence: riskAssessment.confidenceScore || 0.85,
+        timestamp: riskAssessment.timestamp || Date.now(),
+        // Flatten risk factors for ZK proofs if available
+        ...riskAssessment.riskFactors?.reduce((obj, factor) => {
+          obj[`factor_${factor.factor.replace(/\s+/g, '_').toLowerCase()}`] = factor.value;
+          return obj;
+        }, {})
+      }
+    };
+    
+    // Always reveal riskClass, as it's considered non-sensitive
+    const allRevealedAttributes = ['riskClass', ...revealedFactors];
+    
+    // Create the proof
+    const proof = createProof(riskCredential, allRevealedAttributes, {
+      scheme,
+      ...options
+    });
+    
+    // Add risk-specific metadata
+    proof.riskAssessmentId = riskAssessment.address;
+    proof.proofType = 'RiskAssessmentProof';
+    proof.riskClass = riskAssessment.riskClass;
+    
+    logger.info(`Risk assessment ZK proof created: ${proof.id}`);
+    return proof;
+  } catch (error) {
+    logger.error(`Error creating risk assessment ZK proof: ${error.message}`);
+    throw new Error(`Failed to create risk assessment ZK proof: ${error.message}`);
+  }
+}
+
+/**
+ * Verify a risk assessment zero-knowledge proof
+ * @param {Object} proof - The risk assessment proof to verify
+ * @param {Object} options - Verification options
+ * @returns {Object} Verification result
+ */
+function verifyRiskAssessmentProof(proof, options = {}) {
+  try {
+    logger.info(`Verifying risk assessment ZK proof: ${proof.id}`);
+    
+    // Verify the proof using the standard verification function
+    const verificationResult = verifyProof(proof, options);
+    
+    // Add risk assessment specific verification information
+    verificationResult.riskClass = proof.riskClass || 'Unknown';
+    verificationResult.riskAssessmentId = proof.riskAssessmentId;
+    verificationResult.verificationType = 'RiskAssessment';
+    
+    logger.info(`Risk assessment ZK proof verification result: ${JSON.stringify({
+      verified: verificationResult.verified,
+      riskClass: verificationResult.riskClass
+    })}`);
+    
+    return verificationResult;
+  } catch (error) {
+    logger.error(`Error verifying risk assessment ZK proof: ${error.message}`);
+    throw new Error(`Failed to verify risk assessment ZK proof: ${error.message}`);
+  }
+}
+
 module.exports = {
   ZkProofScheme,
   createProof,
   verifyProof,
+  createRiskAssessmentProof,
+  verifyRiskAssessmentProof,
   
   // Export internal functions for testing
   createPedersenCommitment,

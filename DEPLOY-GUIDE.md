@@ -171,7 +171,7 @@ mkdir -p /opt/intellilend
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/intellilend.git /opt/intellilend
+git clone https://github.com/Danielmark001/iota_hackathon.git /opt/intellilend
 cd /opt/intellilend
 
 # Install dependencies

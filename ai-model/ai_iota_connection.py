@@ -50,8 +50,17 @@ class IOTAConnection:
         # Set network
         self.network = self.config.get('network', 'mainnet')
         
-        # Set nodes
-        self.nodes = self.config.get('nodes', [])
+        # Set nodes - handle both array and object structures
+        nodes_config = self.config.get('nodes', [])
+        if isinstance(nodes_config, dict):
+            # Handle the case where nodes are organized by network
+            network_nodes = nodes_config.get(self.network, [])
+            self.nodes = network_nodes if network_nodes else nodes_config.get('testnet', [])
+        else:
+            # Direct array of nodes
+            self.nodes = nodes_config
+            
+        logger.info(f"Using IOTA nodes: {self.nodes}")
         self.current_node_index = 0
         
         # Initialize connection status
@@ -123,42 +132,58 @@ class IOTAConnection:
         Returns:
             Success status
         """
-        # Try all available nodes
-        for i in range(len(self.nodes)):
-            node_url = self.nodes[self.current_node_index]
+        if not self.nodes:
+            logger.error("No IOTA nodes configured")
+            return False
             
-            try:
-                logger.info(f"Connecting to IOTA node: {node_url}")
-                
-                # Test connection with health endpoint
-                response = self._make_request(f"{node_url}/health", timeout=self.config.get('connection_timeout', 10000) / 1000)
-                
-                if response.status_code == 200:
-                    self.is_connected = True
-                    logger.info(f"Successfully connected to IOTA node: {node_url}")
-                    
-                    # Update node health
-                    self.node_health[node_url]['healthy'] = True
-                    self.node_health[node_url]['failure_count'] = 0
-                    self.node_health[node_url]['last_check'] = time.time()
-                    
-                    # Get basic node info
-                    self._get_node_info()
-                    
-                    return True
-                else:
-                    logger.warning(f"Failed to connect to {node_url}: HTTP {response.status_code}")
-                    self._mark_node_unhealthy(node_url)
-            except Exception as e:
-                logger.warning(f"Error connecting to {node_url}: {str(e)}")
-                self._mark_node_unhealthy(node_url)
-            
-            # Try next node
-            self.current_node_index = (self.current_node_index + 1) % len(self.nodes)
+        # Try all available nodes with retry logic
+        max_attempts = self.config.get('retry_attempts', 3)
         
-        # If we get here, all nodes failed
+        for attempt in range(max_attempts):
+            for i in range(len(self.nodes)):
+                node_url = self.nodes[self.current_node_index]
+                
+                try:
+                    logger.info(f"Connecting to IOTA node: {node_url} (attempt {attempt+1}/{max_attempts})")
+                    
+                    # Test connection with health endpoint
+                    response = self._make_request(
+                        f"{node_url}/health", 
+                        timeout=self.config.get('request_timeout', 30)
+                    )
+                    
+                    if response.status_code == 200:
+                        self.is_connected = True
+                        logger.info(f"Successfully connected to IOTA node: {node_url}")
+                        
+                        # Update node health
+                        self.node_health[node_url]['healthy'] = True
+                        self.node_health[node_url]['failure_count'] = 0
+                        self.node_health[node_url]['last_check'] = time.time()
+                        
+                        # Get basic node info
+                        self._get_node_info()
+                        
+                        return True
+                    else:
+                        logger.warning(f"Failed to connect to {node_url}: HTTP {response.status_code}")
+                        self._mark_node_unhealthy(node_url)
+                except Exception as e:
+                    logger.warning(f"Error connecting to {node_url}: {str(e)}")
+                    self._mark_node_unhealthy(node_url)
+                
+                # Try next node
+                self.current_node_index = (self.current_node_index + 1) % len(self.nodes)
+            
+            # If we've tried all nodes but haven't returned, wait before next attempt
+            if attempt < max_attempts - 1:
+                delay = self.config.get('retry_delay', 2) * (2 ** attempt)  # Exponential backoff
+                logger.info(f"Retrying connection after {delay}s delay")
+                time.sleep(delay)
+        
+        # If we get here, all nodes failed after all attempts
         self.is_connected = False
-        logger.error("Failed to connect to any IOTA node")
+        logger.error("Failed to connect to any IOTA node after all attempts")
         return False
     
     def _make_request(self, url: str, method: str = 'GET', data: Optional[Dict[str, Any]] = None, 

@@ -24,10 +24,10 @@ dotenv.config();
 const iotaSDK = require('../iota-sdk');
 const logger = require('../iota-sdk/utils/logger');
 
-// IOTA Identity and Streams Integration
-const iotaIdentity = require('../iota-sdk/identity');
+// IOTA Streams Integration (temporarily disable Identity and Cross-Layer due to missing dependencies)
+// const iotaIdentity = require('../iota-sdk/identity');
 const iotaStreams = require('../iota-sdk/streams');
-const iotaCrossLayer = require('../iota-sdk/cross-layer');
+// const iotaCrossLayer = require('../iota-sdk/cross-layer');
 
 // Configure logger for IOTA integration
 logger.configure({
@@ -76,26 +76,32 @@ async function initializeIotaSdk() {
     const network = process.env.IOTA_NETWORK || 'testnet';
     logger.info(`Connecting to IOTA ${network}...`);
     
-    // Initialize IOTA client with enhanced resilience
-    const { client, nodeManager } = await createClient(network);
-    iotaClient = client;
-    iotaNodeManager = nodeManager;
+    // Create a simplified IOTA client
+    const { Client } = require('@iota/sdk');
+    
+    // Define simple node configuration
+    const nodes = process.env.IOTA_NODES.split(',');
+    logger.info(`Using nodes: ${nodes.join(', ')}`);
+    
+    try {
+        // Simple client creation without complex configuration
+        iotaClient = new Client({ 
+            nodes: nodes,
+            localPow: true
+        });
+        
+        iotaNodeManager = null; // Skip node manager for now
+        logger.info('IOTA client created with simple configuration');
+    } catch (error) {
+        logger.error(`Failed to initialize IOTA Client: ${error.message}`);
+        throw error;
+    }
     
     logger.info('IOTA client connected successfully');
     
-    // Initialize IOTA Identity service
-    logger.info('Initializing IOTA Identity service...');
-    try {
-        iotaIdentityService = await iotaIdentity.createIdentityService(client, {
-            network: network,
-            useLocalProofOfWork: true,
-            permanode: process.env.IOTA_PERMANODE_URL || undefined
-        });
-        logger.info('IOTA Identity service initialized successfully');
-    } catch (identityError) {
-        logger.error(`Failed to initialize IOTA Identity service: ${identityError.message}`);
-        logger.info('Continuing with limited identity functionality');
-    }
+    // Skip Identity service initialization temporarily due to missing dependencies
+    logger.info('Skipping IOTA Identity service initialization due to missing dependencies');
+    iotaIdentityService = null;
     
     // Initialize IOTA Streams service
     logger.info('Initializing IOTA Streams service...');
@@ -110,20 +116,9 @@ async function initializeIotaSdk() {
         logger.info('Continuing with limited streams functionality');
     }
     
-    // Initialize Cross-Layer Aggregator
-    logger.info('Initializing Cross-Layer Aggregator...');
-    try {
-        iotaCrossLayerAggregator = await iotaCrossLayer.createAggregator(client, {
-            bridgeAddress: process.env.BRIDGE_ADDRESS,
-            l1NetworkType: 'iota',
-            l2NetworkType: 'evm',
-            privateKey: process.env.AGGREGATOR_PRIVATE_KEY || undefined
-        });
-        logger.info('Cross-Layer Aggregator initialized successfully');
-    } catch (aggregatorError) {
-        logger.error(`Failed to initialize Cross-Layer Aggregator: ${aggregatorError.message}`);
-        logger.info('Continuing with limited cross-layer functionality');
-    }
+    // Skip Cross-Layer Aggregator initialization temporarily due to missing dependencies
+    logger.info('Skipping Cross-Layer Aggregator initialization due to missing dependencies');
+    iotaCrossLayerAggregator = null;
     
     // Get network information with retry
     const networkInfo = await getNetworkInfo(iotaClient, iotaNodeManager);
@@ -363,23 +358,9 @@ withExponentialBackoff(async () => {
     app.iotaIdentityService = iotaIdentityService;
     app.iotaStreamsService = iotaStreamsService;
     
-    // Initialize IOTA Identity Bridge if not available
-    if (!iotaIdentityBridge && iotaClient && iotaIdentityService) {
-      logger.info('Initializing IOTA Identity Bridge...');
-      try {
-        const { createIdentityBridge } = require('../iota-sdk/identity-bridge');
-        iotaIdentityBridge = await createIdentityBridge(process.env.IOTA_NETWORK || 'testnet', {
-          evmRpcUrl: process.env.IOTA_EVM_RPC_URL,
-          walletOptions: {
-            accountName: 'IdentityBridge',
-            strongholdPassword: process.env.STRONGHOLD_PASSWORD
-          }
-        });
-        logger.info('IOTA Identity Bridge initialized successfully');
-      } catch (bridgeError) {
-        logger.error(`Failed to initialize IOTA Identity Bridge: ${bridgeError.message}`);
-      }
-    }
+    // Skip IOTA Identity Bridge initialization temporarily due to missing dependencies
+    logger.info('Skipping IOTA Identity Bridge initialization due to missing dependencies');
+    iotaIdentityBridge = null;
     
     logger.info('IOTA components initialized successfully');
   }
@@ -402,7 +383,7 @@ console.log('Using REAL AI integration with advanced ML risk assessment');
 const { authenticate } = require('./middleware/auth');
 const { validateRequest } = require('./middleware/validation');
 const { cacheMiddleware } = require('./middleware/cache');
-const logger = require('./utils/logger');
+const backendLogger = require('./utils/logger');
 
 // Initialize Risk Assessment Service
 const riskAssessmentService = new RiskAssessmentService({
@@ -415,8 +396,8 @@ const riskAssessmentService = new RiskAssessmentService({
 // Start the AI API server if using local model
 if (process.env.USE_LOCAL_MODEL === 'true') {
   riskAssessmentService.startApiServer().catch(error => {
-    logger.error(`Error starting AI API server: ${error.message}`);
-    logger.warn('Continuing without AI API server - functionality may be limited');
+    backendLogger.error(`Error starting AI API server: ${error.message}`);
+    backendLogger.warn('Continuing without AI API server - functionality may be limited');
   });
 }
 

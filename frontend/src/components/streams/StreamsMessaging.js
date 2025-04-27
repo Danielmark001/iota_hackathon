@@ -10,6 +10,7 @@ import {
   ListItem,
   ListItemText,
   ListItemAvatar,
+  ListItemIcon,
   Avatar,
   IconButton,
   CircularProgress,

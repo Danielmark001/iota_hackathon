@@ -26,7 +26,11 @@ import { ThemeProvider } from './context/ThemeContext';
 import { SnackbarProvider } from './context/SnackbarContext';
 import { Web3Provider } from './context/Web3Context';
 // Import IOTA dApp Kit
-import { IotaProvider, WalletProvider } from '@iota/dapp-kit';
+import { createNetworkConfig, IotaClientProvider, WalletProvider } from '@iota/dapp-kit';
+import { getFullnodeUrl } from '@iota/iota-sdk/client';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+// Import required CSS for dApp Kit components
+import '@iota/dapp-kit/dist/index.css';
 
 function App() {
   // DEVELOPMENT MODE: No authentication required, all routes accessible
@@ -36,72 +40,68 @@ function App() {
   const isDevEnv = process.env.NODE_ENV === 'development';
   const network = process.env.REACT_APP_IOTA_NETWORK || 'testnet';
 
-  // IOTA dApp Kit configuration with enhanced error handling and wallet support
-  const iotaConfig = {
-    network: network, // Use configured network, defaulting to testnet
-    wallets: ['firefly', 'tanglepay', 'bloom'], // Support multiple wallet types
-    autoConnect: false, // Don't auto-connect, let user choose when to connect
-    onError: (error) => {
-      console.error('IOTA dApp Kit error:', error);
-      
-      // Provide more user-friendly error messages
-      if (error.message && error.message.includes('wallet not found')) {
-        console.warn('Please install the Firefly, TanglePay, or Bloom wallet extension');
-      } else if (error.message && error.message.includes('user rejected')) {
-        console.warn('Connection request was rejected by the user');
-      } else if (error.message && error.message.includes('timeout')) {
-        console.warn('Wallet connection timed out. Please try again.');
-      }
+  // Create QueryClient for React Query
+  const queryClient = new QueryClient();
+
+  // Create network configuration for IOTA Client
+  const { networkConfig } = createNetworkConfig({
+    testnet: {
+      url: getFullnodeUrl('testnet')
+    },
+    devnet: {
+      url: getFullnodeUrl('testnet') // Fallback to testnet URL for devnet
     }
-  };
+  });
 
   return (
     <ThemeProvider>
       <SnackbarProvider>
         <Web3Provider>
-          {/* Add IOTA dApp Kit providers with enhanced configuration */}
-          <IotaProvider config={iotaConfig}>
-            <WalletProvider>
-              <IoTAProvider>
-                <CssBaseline />
-                <div className="app-container">
-                  <Header />
-                  {/* Add network indicator for better environment awareness */}
-                  <NetworkIndicator 
-                    network={network} 
-                    isDevEnv={isDevEnv} 
-                  />
-                  <Box className="content-wrapper">
-                    <Routes>
-                      {/* Public routes */}
-                      <Route path="/" element={<LandingPage />} />
-                      
-                      {/* All routes directly accessible for development */}
-                      <Route path="/dashboard" element={<Dashboard />} />
-                      <Route path="/deposit" element={<DepositPage />} />
-                      <Route path="/borrow" element={<BorrowPage />} />
-                      <Route path="/identity" element={<IdentityPage />} />
-                      <Route path="/risk" element={<RiskAssessmentPage />} />
-                      <Route path="/portfolio" element={<PortfolioPage />} />
-                      <Route path="/settings" element={<SettingsPage />} />
-                      <Route path="/messaging" element={<MessagingPage />} />
-                      <Route path="/cross-layer" element={<CrossLayerPage />} />
-                      <Route path="/swap" element={<SwapPage />} />
-                      <Route path="/staking" element={<StakingPage />} />
-                      <Route path="/liquidation-alerts" element={<LiquidationAlertsPage />} />
-                      <Route path="/transactions" element={<TransactionHistoryPage />} />
-                      <Route path="/ai-dashboard" element={<ExplainableAIPage />} />
-                      
-                      {/* 404 route */}
-                      <Route path="*" element={<NotFound />} />
-                    </Routes>
-                  </Box>
-                  <Footer />
-                  <LoadingBackdrop />
-                </div>
-              </IoTAProvider>
-            </WalletProvider>
-          </IotaProvider>
+          {/* Add IOTA dApp Kit providers with correct configuration */}
+          <QueryClientProvider client={queryClient}>
+            <IotaClientProvider networks={networkConfig} defaultNetwork="testnet">
+              <WalletProvider autoConnect={false}>
+                <IoTAProvider>
+                  <CssBaseline />
+                  <div className="app-container">
+                    <Header />
+                    {/* Add network indicator for better environment awareness */}
+                    <NetworkIndicator 
+                      network={network} 
+                      isDevEnv={isDevEnv} 
+                    />
+                    <Box className="content-wrapper">
+                      <Routes>
+                        {/* Public routes */}
+                        <Route path="/" element={<LandingPage />} />
+                        
+                        {/* All routes directly accessible for development */}
+                        <Route path="/dashboard" element={<Dashboard />} />
+                        <Route path="/deposit" element={<DepositPage />} />
+                        <Route path="/borrow" element={<BorrowPage />} />
+                        <Route path="/identity" element={<IdentityPage />} />
+                        <Route path="/risk" element={<RiskAssessmentPage />} />
+                        <Route path="/portfolio" element={<PortfolioPage />} />
+                        <Route path="/settings" element={<SettingsPage />} />
+                        <Route path="/messaging" element={<MessagingPage />} />
+                        <Route path="/cross-layer" element={<CrossLayerPage />} />
+                        <Route path="/swap" element={<SwapPage />} />
+                        <Route path="/staking" element={<StakingPage />} />
+                        <Route path="/liquidation-alerts" element={<LiquidationAlertsPage />} />
+                        <Route path="/transactions" element={<TransactionHistoryPage />} />
+                        <Route path="/ai-dashboard" element={<ExplainableAIPage />} />
+                        
+                        {/* 404 route */}
+                        <Route path="*" element={<NotFound />} />
+                      </Routes>
+                    </Box>
+                    <Footer />
+                    <LoadingBackdrop />
+                  </div>
+                </IoTAProvider>
+              </WalletProvider>
+            </IotaClientProvider>
+          </QueryClientProvider>
         </Web3Provider>
       </SnackbarProvider>
     </ThemeProvider>

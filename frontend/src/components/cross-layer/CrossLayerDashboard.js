@@ -36,7 +36,8 @@ import {
   Error as ErrorIcon,
   ScheduleOutlined as PendingIcon,
   ContentCopy as CopyIcon,
-  Timeline as TimelineIcon
+  Timeline as TimelineIcon,
+  Info as InfoOutlined
 } from '@mui/icons-material';
 import axios from 'axios';
 import { useWeb3 } from '../../context/Web3Context';
