@@ -1,10 +1,8 @@
 /**
- * IOTA Streams Module
+ * Fixed IOTA Streams implementation
  * 
- * This module provides secure encrypted communication channels using IOTA.
- * It enables secure sharing of documents, messages, and real-time notifications.
- * Since IOTA Streams packages may be outdated, this implementation uses core IOTA
- * functionality with custom encryption.
+ * This file provides a proper streams implementation with the createStreamsService function
+ * to fix the "client is not defined" error.
  */
 
 const { randomBytes, createCipheriv, createDecipheriv, createHash } = require('crypto');

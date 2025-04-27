@@ -37,24 +37,23 @@ const NETWORKS = {
   testnet: {
     // Latest testnet endpoints from docs.iota.org
     nodes: [
-      'https://api.testnet.iota.cafe',
-      'https://testnet.shimmer.network',
+      'https://api.testnet.shimmer.network',
       'https://testnet.shimmer.iota-1.workers.dev', 
       'https://shimmer-testnet.api.nodesail.io'
     ],
-    faucet: 'https://faucet.testnet.iota.cafe',
+    faucet: 'https://faucet.testnet.shimmer.network',
     explorer: {
-      baseUrl: 'https://explorer.rebased.iota.org/?network=testnet',
+      baseUrl: 'https://explorer.shimmer.network/testnet',
       addressPath: 'addr/'
     },
-    jsonRpcUrl: 'https://api.testnet.iota.cafe',
-    indexerRpcUrl: 'https://indexer.testnet.iota.cafe',
-    graphqlRpcUrl: 'https://graphql.testnet.iota.cafe',
-    rpcWebsocketUrl: 'wss://api.testnet.iota.cafe',
+    jsonRpcUrl: 'https://api.testnet.shimmer.network',
+    indexerRpcUrl: 'https://api.testnet.shimmer.network/api/indexer/v1',
+    graphqlRpcUrl: 'https://api.testnet.shimmer.network/api/core/v2/graphql',
+    rpcWebsocketUrl: 'wss://api.testnet.shimmer.network',
     coinType: 4219, // Shimmer
     protocol: {
       networkName: 'shimmer-testnet',
-      bech32Hrp: 'rms',
+      bech32Hrp: 'smr',
       minPowScore: 1000
     }
   },
