@@ -64,13 +64,14 @@ const Sidebar = () => {
     setOpen(!open);
   };
 
-  // Main menu items with cleaner structure
+  // Main menu items with AI Dashboard added at top
   const mainMenuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
+    { text: 'AI Dashboard', icon: <AIIcon />, path: '/ai-dashboard', badge: { label: 'Beta', color: 'primary' } },
     { text: 'Lending', icon: <DepositIcon />, path: '/deposit' },
     { text: 'Borrowing', icon: <BorrowIcon />, path: '/borrow' },
     { text: 'Portfolio', icon: <ProfileIcon />, path: '/portfolio' },
-    { text: 'Staking', icon: <StakingIcon />, path: '/staking', badge: { label: 'New', color: 'success' } },
+    { text: 'Settings', icon: <SettingsIcon />, path: '/settings' },
   ];
 
   // IOTA specific tools - reduced to fit without scrolling
@@ -80,9 +81,8 @@ const Sidebar = () => {
     { text: 'Cross-Layer Bridge', icon: <CrossLayerIcon />, path: '/cross-layer' },
   ];
 
-  // AI tools section - reduced to fit without scrolling
+  // AI tools section - without dashboard (moved to main menu)
   const aiToolsItems = [
-    { text: 'AI Dashboard', icon: <AIIcon />, path: '/ai-dashboard', badge: { label: 'Beta', color: 'primary' } },
     { text: 'Risk Analysis', icon: <RiskIcon />, path: '/risk' },
     { text: 'Explainable AI', icon: <BrainIcon />, path: '/explainable-ai' },
   ];
@@ -100,8 +100,8 @@ const Sidebar = () => {
     }
   }, [isMobile, open]);
 
-  // State for expanded menu sections - all sections expanded by default for better visibility
-  const [expandedSection, setExpandedSection] = useState(null);
+  // State for expanded menu sections - AI section expanded by default
+  const [expandedSection, setExpandedSection] = useState('ai');
 
   // Toggle section expansion
   const toggleSection = (section) => {
