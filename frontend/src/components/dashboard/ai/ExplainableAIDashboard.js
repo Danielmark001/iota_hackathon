@@ -170,8 +170,59 @@ const ExplainableAIDashboard = () => {
     return mockData;
   };
   
-  // Set mock data for development when API is not available
-  const setMockData = () => {
+  // Load data from API with fallback to mock data
+  const setMockData = async () => {
+    try {
+      // Try to load real data from API first
+      const riskData = await apiService.getRiskAssessment(currentAccount);
+      
+      if (riskData && !riskData.error) {
+        console.log('Setting risk assessment data from API');
+        setRiskAssessment(riskData);
+        
+        // Set risk factors from assessment
+        if (riskData.topFactors) {
+          setRiskFactors(riskData.topFactors);
+        }
+        
+        // Try to get feature importance from API
+        try {
+          const importanceData = await apiService.getFeatureImportance();
+          setFeatureImportance(importanceData.features || []);
+        } catch (error) {
+          console.warn('Failed to load feature importance, using fallback data');
+          setFeatureImportance([
+            { feature: 'transaction_history', importance: 0.35 },
+            { feature: 'collateral_ratio', importance: 0.25 },
+            { feature: 'wallet_age', importance: 0.15 },
+            { feature: 'repayment_history', importance: 0.15 },
+            { feature: 'cross_chain_activity', importance: 0.10 }
+          ]);
+        }
+        
+        // Try to get historical risk timeline data
+        try {
+          const timelineResponse = await apiService.getRiskTimeline(currentAccount);
+          if (timelineResponse && timelineResponse.data) {
+            setTimelineData(timelineResponse.data);
+          } else {
+            setTimelineData(generateMockTimelineData());
+          }
+        } catch (error) {
+          console.warn('Failed to load timeline data, using fallback data');
+          setTimelineData(generateMockTimelineData());
+        }
+        
+        return;
+      }
+    } catch (error) {
+      console.error('Error loading real risk assessment data:', error);
+    }
+    
+    // Fallback to mock data if API fails
+    console.warn('Using mock data for risk assessment');
+    
+    // Mock risk assessment data
     setRiskAssessment({
       address: currentAccount,
       riskScore: 45,

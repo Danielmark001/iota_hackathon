@@ -49,6 +49,18 @@ const LandingPage = () => {
       }}
     >
       <Container maxWidth="lg">
+        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
+          <img 
+            src="/assets/iota-logo-full.svg"
+            alt="IOTA Logo" 
+            style={{ 
+              width: isMobile ? 240 : 320,
+              height: 'auto',
+              marginBottom: 16,
+              filter: theme.palette.mode === 'dark' ? 'brightness(1.5)' : 'none'
+            }} 
+          />
+        </Box>
         <Typography
           component="h1"
           variant={isMobile ? 'h3' : 'h2'}
@@ -269,12 +281,13 @@ const LandingPage = () => {
           <Grid item xs={12} md={6}>
             <Box 
               component="img"
-              src="/assets/how-it-works.svg" 
-              alt="How IntelliLend works"
+              src="/assets/iota-logo-icon.svg"
+              alt="IOTA Integration"
               sx={{ 
                 width: '100%', 
-                maxHeight: 400,
+                maxHeight: 300,
                 objectFit: 'contain',
+                filter: theme.palette.mode === 'dark' ? 'brightness(1.5)' : 'none',
                 display: { xs: 'none', md: 'block' }
               }}
             />
@@ -443,7 +456,16 @@ const LandingPage = () => {
           <Grid item xs={12} md={4}>
             <Paper sx={{ p: 3, height: '100%', borderRadius: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <Code color="primary" fontSize="large" sx={{ mr: 1 }} />
+                <img 
+                  src="/assets/iota-logo-icon.svg"
+                  alt="IOTA Logo" 
+                  style={{ 
+                    width: 28, 
+                    height: 28, 
+                    marginRight: 8,
+                    filter: theme.palette.mode === 'dark' ? 'brightness(1.5)' : 'none'
+                  }} 
+                />
                 <Typography variant="h6">IOTA Integration</Typography>
               </Box>
               <Divider sx={{ mb: 2 }} />
@@ -499,19 +521,15 @@ const LandingPage = () => {
                 height: '100%' 
               }}
             >
-              <Box
-                sx={{
-                  borderRadius: '50%',
-                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                  width: 300,
-                  height: 300,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <TrendingUp sx={{ fontSize: 120, opacity: 0.9 }} />
-              </Box>
+              <img 
+                src={require('../assets/iota-logo-icon.svg').default}
+                alt="IOTA Logo" 
+                style={{ 
+                  width: 120, 
+                  height: 120,
+                  filter: 'brightness(5)'
+                }} 
+              />
             </Box>
           </Grid>
         </Grid>

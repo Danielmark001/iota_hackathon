@@ -1,134 +1,94 @@
 /**
- * Start the AI Risk Assessment API
+ * Start AI Risk Assessment API Server
  * 
- * This script starts the Flask API server that exposes the AI risk assessment models.
- * It handles process management, logging, and automatic restarts.
+ * This script starts the Python AI API server for risk assessment.
  */
 
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
-const dotenv = require('dotenv');
 
-// Load environment variables
-dotenv.config({ path: path.join(__dirname, '../../.env') });
+// Configure logging
+const logFile = path.join(__dirname, 'ai_api.log');
+let logStream = fs.createWriteStream(logFile, { flags: 'a' });
 
-// Configuration
-const API_PORT = process.env.AI_API_PORT || 5000;
-const LOG_FILE = path.join(__dirname, 'ai_api.log');
-const MAX_RESTARTS = 5;
-let restartCount = 0;
+console.log('Starting AI Risk Assessment API Server...');
 
-// Ensure log directory exists
-const logDir = path.dirname(LOG_FILE);
-if (!fs.existsSync(logDir)) {
-    fs.mkdirSync(logDir, { recursive: true });
+// Check for Python environment
+const pythonPath = process.env.PYTHON_PATH || 'python';
+const apiScript = path.join(__dirname, 'run_api.py');
+
+// Check if script exists
+if (!fs.existsSync(apiScript)) {
+    console.error(`API script not found: ${apiScript}`);
+    process.exit(1);
 }
 
-// Log startup
-console.log(`Starting AI Risk Assessment API on port ${API_PORT}...`);
-console.log(`Logs will be written to ${LOG_FILE}`);
+// Set environment variables
+const env = { ...process.env };
+env.PORT = process.env.AI_API_PORT || '5000';
+env.HOST = process.env.AI_API_HOST || '0.0.0.0';
+env.DEBUG = process.env.AI_API_DEBUG || 'false';
 
-// Start API process
-function startAPI() {
-    // Create process with environment variables
-    const apiProcess = spawn('python', [path.join(__dirname, 'app.py')], {
-        env: {
-            ...process.env,
-            AI_API_PORT: API_PORT,
-            PYTHONUNBUFFERED: '1' // Ensure Python output is unbuffered
-        }
-    });
-    
-    // Log process ID
-    console.log(`API process started with PID: ${apiProcess.pid}`);
-    
-    // Connect to stdout
-    apiProcess.stdout.on('data', (data) => {
-        const output = data.toString().trim();
-        console.log(`[API] ${output}`);
-        
-        // Append to log file
-        fs.appendFileSync(LOG_FILE, `[${new Date().toISOString()}] ${output}\n`);
-    });
-    
-    // Connect to stderr
-    apiProcess.stderr.on('data', (data) => {
-        const output = data.toString().trim();
-        console.error(`[API ERROR] ${output}`);
-        
-        // Append to log file
-        fs.appendFileSync(LOG_FILE, `[${new Date().toISOString()}] ERROR: ${output}\n`);
-    });
-    
-    // Handle process exit
-    apiProcess.on('exit', (code, signal) => {
-        console.log(`API process exited with code ${code} and signal ${signal}`);
-        fs.appendFileSync(LOG_FILE, `[${new Date().toISOString()}] Process exited with code ${code} and signal ${signal}\n`);
-        
-        // Restart if exit wasn't clean and we haven't exceeded restart limit
-        if (code !== 0 && restartCount < MAX_RESTARTS) {
-            restartCount++;
-            console.log(`Restarting API (attempt ${restartCount}/${MAX_RESTARTS})...`);
-            fs.appendFileSync(LOG_FILE, `[${new Date().toISOString()}] Restarting (attempt ${restartCount}/${MAX_RESTARTS})...\n`);
-            
-            // Wait before restarting to avoid rapid restart loops
-            setTimeout(() => {
-                startAPI();
-            }, 3000);
-        } else if (restartCount >= MAX_RESTARTS) {
-            console.error(`Maximum restart attempts (${MAX_RESTARTS}) reached. Please check the logs and restart manually.`);
-            fs.appendFileSync(LOG_FILE, `[${new Date().toISOString()}] Maximum restart attempts reached. Exiting.\n`);
-            process.exit(1);
-        }
-    });
-    
-    // Handle process errors
-    apiProcess.on('error', (err) => {
-        console.error(`Failed to start API process: ${err.message}`);
-        fs.appendFileSync(LOG_FILE, `[${new Date().toISOString()}] Process start error: ${err.message}\n`);
-        
-        if (restartCount < MAX_RESTARTS) {
-            restartCount++;
-            console.log(`Attempting restart (${restartCount}/${MAX_RESTARTS})...`);
-            setTimeout(() => {
-                startAPI();
-            }, 3000);
-        } else {
-            console.error(`Maximum restart attempts reached. Please check the logs and restart manually.`);
-            process.exit(1);
-        }
-    });
-    
-    // Handle graceful shutdown
-    process.on('SIGINT', () => {
-        console.log('Received SIGINT signal. Shutting down API...');
-        fs.appendFileSync(LOG_FILE, `[${new Date().toISOString()}] Received SIGINT signal. Shutting down...\n`);
-        
-        // Kill the API process
-        apiProcess.kill('SIGINT');
-        
-        // Exit after a timeout in case the process doesn't exit cleanly
-        setTimeout(() => {
-            console.log('Exiting...');
-            process.exit(0);
-        }, 5000);
-    });
-    
-    process.on('SIGTERM', () => {
-        console.log('Received SIGTERM signal. Shutting down API...');
-        fs.appendFileSync(LOG_FILE, `[${new Date().toISOString()}] Received SIGTERM signal. Shutting down...\n`);
-        
-        // Kill the API process
-        apiProcess.kill('SIGTERM');
-        
-        // Exit after a timeout in case the process doesn't exit cleanly
-        setTimeout(() => {
-            console.log('Exiting...');
-            process.exit(0);
-        }, 5000);
-    });
-}
+// Start the Python API server
+const apiProcess = spawn(pythonPath, [apiScript], {
+    env,
+    detached: false,
+    stdio: ['ignore', 'pipe', 'pipe']
+});
 
-// Start the API
-startAPI();
+// Log process information
+console.log(`AI API Server started with PID: ${apiProcess.pid}`);
+console.log(`API will be available at: http://localhost:${env.PORT}`);
+
+// Handle output
+apiProcess.stdout.on('data', (data) => {
+    const output = data.toString().trim();
+    console.log(`[AI API] ${output}`);
+    logStream.write(`[${new Date().toISOString()}] [INFO] ${output}\n`);
+});
+
+apiProcess.stderr.on('data', (data) => {
+    const output = data.toString().trim();
+    console.error(`[AI API ERROR] ${output}`);
+    logStream.write(`[${new Date().toISOString()}] [ERROR] ${output}\n`);
+});
+
+// Handle process exit
+apiProcess.on('close', (code) => {
+    console.log(`AI API Server exited with code ${code}`);
+    logStream.end();
+});
+
+// Handle errors
+apiProcess.on('error', (err) => {
+    console.error(`Failed to start AI API Server: ${err.message}`);
+    logStream.write(`[${new Date().toISOString()}] [FATAL] Failed to start: ${err.message}\n`);
+    logStream.end();
+    process.exit(1);
+});
+
+// Handle Node.js process exit
+process.on('exit', () => {
+    console.log('Stopping AI API Server...');
+    
+    if (apiProcess && !apiProcess.killed) {
+        // Kill the API process 
+        apiProcess.kill();
+    }
+    
+    if (logStream) {
+        logStream.end();
+    }
+});
+
+// Handle signals
+process.on('SIGINT', () => {
+    console.log('Received SIGINT signal. Shutting down...');
+    process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+    console.log('Received SIGTERM signal. Shutting down...');
+    process.exit(0);
+});

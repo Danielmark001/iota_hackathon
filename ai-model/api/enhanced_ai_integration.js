@@ -1160,22 +1160,91 @@ class EnhancedAIIntegration extends OriginalAIIntegration {
       
       let riskAssessment;
       
+      // First check if we have IOTA data
+      const iotaDataAvailable = userData.iotaData && 
+                               userData.iotaData.address && 
+                               userData.iotaData.transactions &&
+                               userData.iotaData.transactions.length > 0;
+      
+      // Attempt to get cross-chain data if not already present
+      if (!userData.crossChainData && this.crossChainOracle) {
+        try {
+          userData.crossChainData = await this.fetchCrossChainData(userAddress);
+        } catch (error) {
+          console.warn(`Could not fetch cross-chain data: ${error.message}`);
+        }
+      }
+      
+      // Use appropriate model depending on available data
       if (this.useLocalModel) {
         // Use local Python model with enhanced data
-        riskAssessment = await this.runEnhancedLocalRiskModel(userData);
+        if (iotaDataAvailable) {
+          // Use IOTA-enhanced model
+          try {
+            console.log('Using IOTA-enhanced local model');
+            riskAssessment = await this.runEnhancedLocalRiskModel(userData);
+          } catch (error) {
+            console.warn(`IOTA model failed: ${error.message}, falling back to standard model`);
+            riskAssessment = await this.runLocalRiskModel(userData);
+          }
+        } else {
+          // Use standard model
+          riskAssessment = await this.runLocalRiskModel(userData);
+        }
       } else {
         // Use remote API with enhanced data
-        riskAssessment = await this.callEnhancedRiskAPI(userData);
+        try {
+          riskAssessment = await this.callEnhancedRiskAPI(userData);
+        } catch (error) {
+          console.warn(`Enhanced API failed: ${error.message}, falling back to standard API`);
+          riskAssessment = await this.callRiskAPI(userData);
+        }
       }
       
       // If model execution fails, use weighted factor approach
       if (!riskAssessment) {
+        console.warn('Model execution failed, using weighted factor approach');
         riskAssessment = this.generateWeightedRiskScore(userData);
+      }
+      
+      // Add IOTA-specific recommendations if applicable
+      if (iotaDataAvailable) {
+        riskAssessment = this.addIotaRecommendations(riskAssessment, userData.iotaData);
+      }
+      
+      // Record assessment to IOTA Tangle for audit trail
+      try {
+        if (this.iotaClient) {
+          // Don't include full user data in the record, just the assessment result
+          const tangleRecord = {
+            address: userAddress,
+            riskScore: riskAssessment.riskScore,
+            timestamp: Date.now(),
+            modelVersion: '2.0.0-enhanced',
+            factorCount: riskAssessment.factors ? riskAssessment.factors.length : 0,
+            usedIotaData: iotaDataAvailable
+          };
+          
+          await this.recordToIotaTangle('RISK_ASSESSMENT', tangleRecord);
+          console.log('Risk assessment recorded to IOTA Tangle');
+        }
+      } catch (error) {
+        console.warn(`Failed to record assessment to Tangle: ${error.message}`);
       }
       
       // Add metadata
       riskAssessment.timestamp = Date.now();
       riskAssessment.modelVersion = '2.0.0-enhanced';
+      riskAssessment.dataQuality = {
+        usedRealIotaData: iotaDataAvailable,
+        usedCrossChainData: !!userData.crossChainData,
+        confidenceAdjustment: iotaDataAvailable ? +0.15 : 0
+      };
+      
+      // Adjust confidence if we have IOTA data
+      if (iotaDataAvailable && riskAssessment.confidence) {
+        riskAssessment.confidence = Math.min(1.0, riskAssessment.confidence + 0.15);
+      }
       
       return riskAssessment;
     }
@@ -1185,6 +1254,57 @@ class EnhancedAIIntegration extends OriginalAIIntegration {
       // Fall back to original risk score calculation
       return this.fallbackRiskCalculation(userData);
     }
+  }
+  
+  /**
+   * Add IOTA-specific recommendations to risk assessment
+   * @param {Object} assessment - Risk assessment
+   * @param {Object} iotaData - IOTA data
+   * @returns {Object} Updated risk assessment with IOTA recommendations
+   */
+  addIotaRecommendations(assessment, iotaData) {
+    console.log('Adding IOTA-specific recommendations');
+    
+    if (!assessment.recommendations) {
+      assessment.recommendations = [];
+    }
+    
+    // Add recommendation to increase IOTA transaction frequency if low
+    if (iotaData.activityMetrics.transactionFrequency < 0.5) { // Less than 1 tx every 2 days
+      assessment.recommendations.push({
+        title: 'Increase IOTA Transaction Activity',
+        description: 'Regular transactions on the IOTA network improve your on-chain reputation.',
+        impact: 'medium',
+        type: 'network',
+        details: 'Your transaction frequency is currently lower than optimal. Aim for at least one transaction every 2 days to build a stronger reputation score.'
+      });
+    }
+    
+    // Add recommendation to use IOTA Streams if not used
+    const usesStreams = iotaData.transactions.some(tx => tx.tag === 'STREAMS_MESSAGE');
+    if (!usesStreams) {
+      assessment.recommendations.push({
+        title: 'Utilize IOTA Streams for Secure Messaging',
+        description: 'IOTA Streams provides secure, verifiable communication channels.',
+        impact: 'low',
+        type: 'network',
+        details: 'Using IOTA Streams for secure messaging demonstrates advanced usage of the network and can positively impact your risk profile.'
+      });
+    }
+    
+    // Add recommendation to diversify IOTA activity if limited
+    const uniqueTags = new Set(iotaData.transactions.map(tx => tx.tag)).size;
+    if (uniqueTags < 3) {
+      assessment.recommendations.push({
+        title: 'Diversify IOTA Network Activity',
+        description: 'Utilizing multiple IOTA features improves your network reputation.',
+        impact: 'medium',
+        type: 'network',
+        details: 'Your IOTA usage is currently limited to few transaction types. Consider exploring identity, streams, and smart contracts to build a more diverse profile.'
+      });
+    }
+    
+    return assessment;
   }
   
   /**

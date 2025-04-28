@@ -1,298 +1,205 @@
-import React, { useState, useEffect } from 'react';
-import {
-  Box,
-  Typography,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Grid,
-  Paper,
-  useTheme
-} from '@mui/material';
-import {
-  ResponsiveContainer,
-  Treemap,
-  Tooltip as RechartsTooltip
+import React from 'react';
+import { 
+  ScatterChart, 
+  Scatter, 
+  XAxis, 
+  YAxis, 
+  ZAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  Legend,
+  Cell,
+  ResponsiveContainer 
 } from 'recharts';
+import { Box, Typography, Paper, Grid, useTheme, alpha } from '@mui/material';
 
 const FactorImpactHeatmap = ({ factors, height = 400 }) => {
   const theme = useTheme();
-  const [displayMode, setDisplayMode] = useState('contribution'); // 'contribution' or 'impact'
-  const [treeMapData, setTreeMapData] = useState({ name: 'Risk Factors', children: [] });
-  
-  // Process factors data when it changes or display mode changes
-  useEffect(() => {
-    if (!factors || factors.length === 0) {
-      setTreeMapData({ name: 'Risk Factors', children: [] });
-      return;
-    }
+
+  // Prepare data for the heatmap
+  const prepareData = (factors) => {
+    // Sort factors by impact (highest to lowest)
+    const sortedFactors = [...factors].sort((a, b) => b.impact - a.impact);
     
-    // Map factors to treemap format
-    const children = factors.map(factor => {
-      // Format factor name
-      const name = factor.name.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-      
-      // Get value based on display mode
-      let value;
-      if (displayMode === 'contribution') {
-        // For contribution, we use the absolute value for size but keep track of type
-        value = Math.abs(factor.contribution);
-      } else {
-        // For impact, we use the impact percentage
-        value = factor.impact * 100;
-      }
-      
-      return {
-        name,
-        value,
-        contribution: factor.contribution,
-        impact: factor.impact * 100,
-        description: factor.description,
-        // Type determines color: positive (green) or negative (red)
-        type: factor.contribution < 0 ? 'positive' : 'negative'
-      };
-    });
-    
-    // Sort by value (highest first)
-    children.sort((a, b) => b.value - a.value);
-    
-    // Set treemap data
-    setTreeMapData({
-      name: 'Risk Factors',
-      children
-    });
-  }, [factors, displayMode]);
-  
-  // Handle display mode change
-  const handleDisplayModeChange = (event) => {
-    setDisplayMode(event.target.value);
+    // Create data points for the scatter plot
+    // We'll use a grid where:
+    // - x-axis: factor contribution (positive/negative)
+    // - y-axis: factor categories in order of impact
+    // - z-axis (color): impact value
+    return sortedFactors.map((factor, index) => ({
+      name: factor.name
+        .split('_')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' '),
+      x: factor.contribution,
+      y: sortedFactors.length - index, // Reverse index for y-axis ordering
+      z: factor.impact,
+      description: factor.description,
+      details: factor.details,
+      contribution: factor.contribution
+    }));
   };
-  
-  // Get color based on factor type and value
-  const getColor = (data) => {
-    if (!data) return theme.palette.grey[300];
-    
-    const { type, value } = data;
-    
-    if (displayMode === 'contribution') {
-      // For contribution display mode
-      if (type === 'positive') {
-        // Green scale for positive factors
-        const intensity = Math.min(1, value / 20); // Scale up to 20 points
-        return theme.palette.success[intensity < 0.5 ? 200 : intensity < 0.7 ? 400 : intensity < 0.9 ? 600 : 800];
-      } else {
-        // Red scale for negative factors
-        const intensity = Math.min(1, value / 20); // Scale up to 20 points
-        return theme.palette.error[intensity < 0.5 ? 200 : intensity < 0.7 ? 400 : intensity < 0.9 ? 600 : 800];
-      }
-    } else {
-      // For impact display mode (neutral scale)
-      const intensity = Math.min(1, value / 40); // Scale up to 40% impact
-      return theme.palette.primary[intensity < 0.3 ? 100 : intensity < 0.5 ? 200 : intensity < 0.7 ? 400 : intensity < 0.9 ? 600 : 800];
-    }
-  };
-  
-  // Custom tooltip
+
+  const data = prepareData(factors);
+
+  // Custom tooltip to show detailed information
   const CustomTooltip = ({ active, payload }) => {
-    if (active && payload && payload.length > 0) {
-      const data = payload[0].payload;
-      
+    if (active && payload && payload.length) {
+      const factor = payload[0].payload;
       return (
-        <Paper sx={{ p: 1.5, maxWidth: 250 }}>
-          <Typography variant="subtitle2">{data.name}</Typography>
-          
-          {displayMode === 'contribution' ? (
-            <>
+        <Paper 
+          elevation={3} 
+          sx={{ 
+            p: 2, 
+            maxWidth: 300,
+            border: `1px solid ${theme.palette.divider}`,
+          }}
+        >
+          <Typography variant="subtitle2" gutterBottom>
+            {factor.name}
+          </Typography>
+          <Typography variant="body2" paragraph>
+            {factor.description}
+          </Typography>
+          <Grid container spacing={1}>
+            <Grid item xs={6}>
+              <Typography variant="body2" color="text.secondary">
+                Impact:
+              </Typography>
               <Typography 
                 variant="body2" 
-                sx={{ 
-                  color: data.type === 'positive' ? theme.palette.success.main : theme.palette.error.main,
-                  fontWeight: 'medium',
-                  mt: 0.5
-                }}
+                fontWeight="medium"
               >
-                Contribution: {data.type === 'positive' ? '-' : '+'}{Math.abs(data.contribution)} points
+                {(factor.z * 100).toFixed(0)}%
               </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Impact: {data.impact.toFixed(0)}% of risk score
+            </Grid>
+            <Grid item xs={6}>
+              <Typography variant="body2" color="text.secondary">
+                Contribution:
               </Typography>
-            </>
-          ) : (
-            <>
               <Typography 
                 variant="body2" 
-                sx={{ 
-                  color: theme.palette.primary.main,
-                  fontWeight: 'medium',
-                  mt: 0.5
-                }}
+                fontWeight="medium"
+                color={factor.contribution > 0 ? 'error.main' : 'success.main'}
               >
-                Impact: {data.impact.toFixed(0)}% of risk score
+                {factor.contribution > 0 ? '+' : ''}{factor.contribution} pts
               </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Contribution: {data.type === 'positive' ? '-' : '+'}{Math.abs(data.contribution)} points
-              </Typography>
-            </>
-          )}
-          
-          {data.description && (
-            <Typography variant="body2" sx={{ mt: 1 }}>
-              {data.description}
-            </Typography>
-          )}
+            </Grid>
+          </Grid>
         </Paper>
       );
     }
     return null;
   };
-  
-  // If no factors data
-  if (!factors || factors.length === 0) {
-    return (
-      <Box sx={{ 
-        height, 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center',
-        flexDirection: 'column',
-        p: 3
-      }}>
-        <Typography variant="body1" color="text.secondary">
-          No risk factor data available
-        </Typography>
-      </Box>
-    );
-  }
-  
+
+  // Function to determine circle color based on contribution
+  const getColor = (contribution, impact) => {
+    if (contribution > 0) {
+      // Risk-increasing factors (bad)
+      return alpha(theme.palette.error.main, 0.3 + impact * 0.7);
+    } else {
+      // Risk-decreasing factors (good)
+      return alpha(theme.palette.success.main, 0.3 + impact * 0.7);
+    }
+  };
+
+  // Calculate axis domains with some padding
+  const minContribution = Math.min(...data.map(d => d.x));
+  const maxContribution = Math.max(...data.map(d => d.x));
+  const contributionPadding = Math.max(5, Math.abs(minContribution) * 0.2, Math.abs(maxContribution) * 0.2);
+  const xDomain = [
+    Math.floor(minContribution - contributionPadding),
+    Math.ceil(maxContribution + contributionPadding)
+  ];
+
+  // Calculate maximum impact for scaling circle size
+  const maxImpact = Math.max(...data.map(d => d.z));
+
   return (
-    <Box sx={{ height, width: '100%' }}>
-      {/* Display mode selector */}
-      <Box sx={{ mb: 2 }}>
-        <FormControl variant="outlined" size="small" sx={{ minWidth: 200 }}>
-          <InputLabel id="display-mode-label">Display Mode</InputLabel>
-          <Select
-            labelId="display-mode-label"
-            id="display-mode"
-            value={displayMode}
-            onChange={handleDisplayModeChange}
-            label="Display Mode"
-          >
-            <MenuItem value="contribution">Contribution to Risk Score</MenuItem>
-            <MenuItem value="impact">Impact Weight</MenuItem>
-          </Select>
-        </FormControl>
-      </Box>
-      
-      {/* Legend */}
-      <Grid container spacing={1} sx={{ mb: 2 }}>
-        {displayMode === 'contribution' ? (
-          <>
-            <Grid item>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <Box sx={{ 
-                  width: 16, 
-                  height: 16, 
-                  bgcolor: theme.palette.success.main,
-                  mr: 0.5,
-                  borderRadius: 0.5
-                }} />
-                <Typography variant="caption">
-                  Positive Factors (Decrease Risk)
-                </Typography>
-              </Box>
-            </Grid>
-            <Grid item>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <Box sx={{ 
-                  width: 16, 
-                  height: 16, 
-                  bgcolor: theme.palette.error.main,
-                  mr: 0.5,
-                  borderRadius: 0.5
-                }} />
-                <Typography variant="caption">
-                  Negative Factors (Increase Risk)
-                </Typography>
-              </Box>
-            </Grid>
-          </>
-        ) : (
-          <Grid item>
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <Box sx={{ 
-                width: 16, 
-                height: 16, 
-                bgcolor: theme.palette.primary.main,
-                mr: 0.5,
-                borderRadius: 0.5
-              }} />
-              <Typography variant="caption">
-                Factor Importance in Risk Model
-              </Typography>
-            </Box>
-          </Grid>
-        )}
-        <Grid item xs={12}>
-          <Typography variant="caption" color="text.secondary">
-            Size indicates {displayMode === 'contribution' ? 'absolute contribution magnitude' : 'relative impact weight'}
-          </Typography>
-        </Grid>
-      </Grid>
-      
-      {/* Treemap visualization */}
-      <ResponsiveContainer width="100%" height={height - 100}>
-        <Treemap
-          data={treeMapData}
-          dataKey="value"
-          stroke={theme.palette.background.paper}
-          fill={theme.palette.primary.main}
-          content={({ root, depth, x, y, width, height, index, payload, colors, rank, name }) => {
-            return (
-              <g>
-                {root.children && root.children.map((node, i) => {
-                  const nodeWidth = node.x1 - node.x0;
-                  const nodeHeight = node.y1 - node.y0;
-                  
-                  // Only render if the node is big enough
-                  if (nodeWidth < 1 || nodeHeight < 1) return null;
-                  
-                  return (
-                    <g key={`node-${i}`}>
-                      <rect
-                        x={node.x0}
-                        y={node.y0}
-                        width={nodeWidth}
-                        height={nodeHeight}
-                        fill={getColor(node)}
-                        stroke={theme.palette.background.paper}
-                      />
-                      {/* Only render text if node is big enough */}
-                      {nodeWidth > 30 && nodeHeight > 30 && (
-                        <text
-                          x={node.x0 + nodeWidth / 2}
-                          y={node.y0 + nodeHeight / 2}
-                          textAnchor="middle"
-                          dominantBaseline="middle"
-                          style={{
-                            fontSize: '0.8rem',
-                            fontFamily: theme.typography.fontFamily,
-                            fill: theme.palette.getContrastText(getColor(node)),
-                            pointerEvents: 'none'
-                          }}
-                        >
-                          {node.name}
-                        </text>
-                      )}
-                    </g>
-                  );
-                })}
-              </g>
-            );
+    <Box sx={{ width: '100%', height }}>
+      <ResponsiveContainer>
+        <ScatterChart
+          margin={{
+            top: 20,
+            right: 20,
+            bottom: 20,
+            left: 20,
           }}
         >
-          <RechartsTooltip content={<CustomTooltip />} />
-        </Treemap>
+          <CartesianGrid 
+            strokeDasharray="3 3" 
+            stroke={alpha(theme.palette.divider, 0.7)} 
+          />
+          <XAxis 
+            type="number" 
+            dataKey="x" 
+            name="Contribution" 
+            domain={xDomain}
+            label={{ 
+              value: 'Risk Contribution (points)', 
+              position: 'bottom',
+              style: { fill: theme.palette.text.secondary }
+            }}
+            stroke={theme.palette.text.secondary}
+          />
+          <YAxis 
+            type="number"
+            dataKey="y" 
+            name="Factor"
+            tickCount={data.length}
+            tick={props => {
+              const { x, y, payload } = props;
+              const index = data.length - payload.value;
+              const label = index >= 0 && index < data.length ? data[index].name : '';
+              
+              return (
+                <text 
+                  x={x} 
+                  y={y} 
+                  dy={3} 
+                  textAnchor="end" 
+                  fill={theme.palette.text.secondary}
+                  fontSize={12}
+                >
+                  {label}
+                </text>
+              );
+            }}
+            axisLine={false}
+            domain={[0, data.length + 1]}
+          />
+          <ZAxis 
+            type="number" 
+            dataKey="z" 
+            range={[40, 100]} 
+            name="Impact" 
+          />
+          <Tooltip content={<CustomTooltip />} />
+          <Legend 
+            payload={[
+              { 
+                value: 'Increases Risk', 
+                type: 'circle', 
+                color: theme.palette.error.main 
+              },
+              { 
+                value: 'Decreases Risk', 
+                type: 'circle', 
+                color: theme.palette.success.main 
+              }
+            ]}
+          />
+          <Scatter name="Risk Factors" data={data}>
+            {data.map((entry, index) => (
+              <Cell 
+                key={`cell-${index}`} 
+                fill={getColor(entry.contribution, entry.z / maxImpact)}
+                stroke={entry.contribution > 0 ? theme.palette.error.main : theme.palette.success.main}
+                strokeWidth={1}
+              />
+            ))}
+          </Scatter>
+        </ScatterChart>
       </ResponsiveContainer>
     </Box>
   );

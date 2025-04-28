@@ -1,38 +1,72 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { ethers } from 'ethers';
-import LendingPoolABI from '../abis/LendingPool.json';
-import ZKVerifierABI from '../abis/ZKVerifier.json';
 import { useSnackbar } from './SnackbarContext';
+import { CONTRACT_ADDRESSES, CONTRACT_ABIS, NETWORK_CONFIG, USE_MOCK_DATA } from '../config/contracts';
 
 // Create context
 const Web3Context = createContext(null);
 
 // Provider component
 export const Web3Provider = ({ children }) => {
-  // For development purposes - mock wallet connection
-  const [provider, setProvider] = useState({});
-  const [signer, setSigner] = useState({});
-  const [currentAccount, setCurrentAccount] = useState('0x71C7656EC7ab88b098defB751B7401B5f6d8976F');
-  const [chainId, setChainId] = useState(1);
+  // State for web3 connection
+  const [provider, setProvider] = useState(null);
+  const [signer, setSigner] = useState(null);
+  const [currentAccount, setCurrentAccount] = useState('');
+  const [chainId, setChainId] = useState(null);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [lendingPool, setLendingPool] = useState({});
-  const [zkVerifier, setZKVerifier] = useState({});
+  const [lendingPool, setLendingPool] = useState(null);
+  const [zkVerifier, setZKVerifier] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState(null);
   const { showSnackbar } = useSnackbar();
-
-  // Contract addresses - would normally be loaded from .env
-  const LENDING_POOL_ADDRESS = '0x1234567890123456789012345678901234567890'; // Replace with actual address
-  const ZK_VERIFIER_ADDRESS = '0x0987654321098765432109876543210987654321'; // Replace with actual address
 
   // Initialize ethers provider
   useEffect(() => {
     const initProvider = async () => {
-      if (window.ethereum) {
-        const ethersProvider = new ethers.providers.Web3Provider(window.ethereum);
+      try {
+        let ethersProvider;
+        
+        if (window.ethereum) {
+          // Use injected provider (MetaMask, etc.)
+          ethersProvider = new ethers.providers.Web3Provider(window.ethereum);
+        } else {
+          // Fallback to JSON RPC provider
+          ethersProvider = new ethers.providers.JsonRpcProvider(
+            NETWORK_CONFIG.rpcUrls[0]
+          );
+          
+          console.log('Using JSON RPC provider:', NETWORK_CONFIG.rpcUrls[0]);
+        }
+        
         setProvider(ethersProvider);
         
         // Get network info
         const network = await ethersProvider.getNetwork();
         setChainId(network.chainId);
+        
+        // Get signer if available (only with injected providers)
+        if (window.ethereum) {
+          // Get connected accounts without prompting
+          const accounts = await window.ethereum.request({ 
+            method: 'eth_accounts'
+          });
+          
+          if (accounts.length > 0) {
+            setCurrentAccount(accounts[0]);
+            const newSigner = ethersProvider.getSigner();
+            setSigner(newSigner);
+            setIsConnected(true);
+          } else {
+            // Use read-only mode with provider
+            setSigner(ethersProvider);
+          }
+        } else {
+          // Use provider as signer for read-only operations
+          setSigner(ethersProvider);
+        }
+      } catch (error) {
+        console.error('Failed to initialize provider:', error);
+        setConnectionError('Failed to connect to blockchain network');
       }
     };
     
@@ -43,22 +77,26 @@ export const Web3Provider = ({ children }) => {
   useEffect(() => {
     if (provider && signer) {
       try {
-        // Initialize contract instances
+        // Initialize contract instances using addresses from config
         const lendingPoolContract = new ethers.Contract(
-          LENDING_POOL_ADDRESS,
-          LendingPoolABI,
+          CONTRACT_ADDRESSES.LENDING_POOL,
+          CONTRACT_ABIS.LENDING_POOL,
           signer
         );
         setLendingPool(lendingPoolContract);
         
         const zkVerifierContract = new ethers.Contract(
-          ZK_VERIFIER_ADDRESS,
-          ZKVerifierABI,
+          CONTRACT_ADDRESSES.ZK_VERIFIER,
+          CONTRACT_ABIS.ZK_VERIFIER,
           signer
         );
         setZKVerifier(zkVerifierContract);
+        
+        // Clear any previous connection errors
+        setConnectionError(null);
       } catch (error) {
         console.error('Failed to initialize contracts:', error);
+        setConnectionError('Failed to connect to blockchain contracts');
         showSnackbar('Failed to connect to blockchain contracts', 'error');
       }
     }
@@ -70,6 +108,7 @@ export const Web3Provider = ({ children }) => {
       const handleAccountsChanged = (accounts) => {
         if (accounts.length > 0 && accounts[0] !== currentAccount) {
           setCurrentAccount(accounts[0]);
+          setIsConnected(true);
           
           if (provider) {
             const newSigner = provider.getSigner();
@@ -78,15 +117,19 @@ export const Web3Provider = ({ children }) => {
         } else if (accounts.length === 0) {
           // User disconnected their wallet
           setCurrentAccount('');
-          setSigner(null);
+          setIsConnected(false);
+          // Fallback to provider for read-only operations
+          setSigner(provider);
         }
       };
 
       const handleChainChanged = (chainIdHex) => {
-        setChainId(parseInt(chainIdHex, 16));
+        const newChainId = parseInt(chainIdHex, 16);
+        setChainId(newChainId);
         
-        // Refresh the page as recommended by MetaMask
-        window.location.reload();
+        if (newChainId !== parseInt(NETWORK_CONFIG.chainId, 16)) {
+          showSnackbar(`Connected to network ID ${newChainId}. Please switch to IOTA EVM Testnet.`, 'warning');
+        }
       };
 
       // Subscribe to events
@@ -99,38 +142,67 @@ export const Web3Provider = ({ children }) => {
         window.ethereum.removeListener('chainChanged', handleChainChanged);
       };
     }
-  }, [currentAccount, provider]);
+  }, [currentAccount, provider, showSnackbar]);
 
-  // Connect wallet function - mock implementation for development
+  // Connect wallet function
   const connectWallet = useCallback(async () => {
-    // For development, just return success without connecting real wallet
-    showSnackbar('Wallet connected successfully', 'success');
-    return true;
-  }, [showSnackbar]);
+    if (!window.ethereum) {
+      showSnackbar('No wallet detected. Please install MetaMask or another Web3 wallet.', 'error');
+      return false;
+    }
+    
+    setIsConnecting(true);
+    
+    try {
+      // Request accounts
+      const accounts = await window.ethereum.request({
+        method: 'eth_requestAccounts'
+      });
+      
+      if (accounts.length > 0) {
+        setCurrentAccount(accounts[0]);
+        setIsConnected(true);
+        
+        if (provider) {
+          const newSigner = provider.getSigner();
+          setSigner(newSigner);
+        }
+        
+        // Check if on the right network
+        const network = await provider.getNetwork();
+        if (network.chainId !== parseInt(NETWORK_CONFIG.chainId, 16)) {
+          showSnackbar(`Connected to wrong network. Please switch to IOTA EVM Testnet.`, 'warning');
+          switchNetwork();
+        } else {
+          showSnackbar('Wallet connected successfully', 'success');
+        }
+        
+        return true;
+      } else {
+        showSnackbar('Please connect a wallet account', 'error');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error connecting wallet:', error);
+      showSnackbar('Failed to connect wallet', 'error');
+      return false;
+    } finally {
+      setIsConnecting(false);
+    }
+  }, [provider, showSnackbar]);
 
   // Switch network if needed
-  const switchNetwork = useCallback(async (targetChainId) => {
-    // IOTA EVM testnet parameters
-    const IOTA_CHAIN_ID = '0x1074'; // 4212 in decimal
-    const IOTA_CHAIN_PARAMS = {
-      chainId: IOTA_CHAIN_ID,
-      chainName: 'IOTA EVM Testnet',
-      nativeCurrency: {
-        name: 'IOTA',
-        symbol: 'IOTA',
-        decimals: 18
-      },
-      rpcUrls: ['https://evm.testnet.chrysalis2.com'],
-      blockExplorerUrls: ['https://explorer.testnet.chrysalis2.com']
-    };
-    
-    if (!window.ethereum) return false;
+  const switchNetwork = useCallback(async () => {
+    if (!window.ethereum) {
+      showSnackbar('No wallet detected. Please install MetaMask or another Web3 wallet.', 'error');
+      return false;
+    }
     
     try {
       // First try to switch to the network
       await window.ethereum.request({
         method: 'wallet_switchEthereumChain',
-        params: [{ chainId: targetChainId || IOTA_CHAIN_ID }]
+        params: [{ chainId: NETWORK_CONFIG.chainId }]
       });
       
       return true;
@@ -140,7 +212,7 @@ export const Web3Provider = ({ children }) => {
         try {
           await window.ethereum.request({
             method: 'wallet_addEthereumChain',
-            params: [IOTA_CHAIN_PARAMS]
+            params: [NETWORK_CONFIG]
           });
           
           return true;
@@ -164,10 +236,13 @@ export const Web3Provider = ({ children }) => {
     currentAccount,
     chainId,
     isConnecting,
+    isConnected,
     lendingPool,
     zkVerifier,
     connectWallet,
-    switchNetwork
+    switchNetwork,
+    connectionError,
+    useMockData: USE_MOCK_DATA
   };
 
   return <Web3Context.Provider value={value}>{children}</Web3Context.Provider>;

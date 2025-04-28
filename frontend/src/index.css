@@ -1,10 +1,42 @@
+/* Import Inter font from Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  /* IOTA brand colors */
+  --iota-purple: #6345b8;
+  --iota-purple-light: #8e75d1;
+  --iota-purple-dark: #4a2f99;
+  --iota-teal: #04a997;
+  --iota-teal-light: #41c4b5;
+  --iota-teal-dark: #038677;
+  
+  /* Theme-specific colors */
+  --background-light: #f8f9fb;
+  --background-dark: #0c1524;
+  --paper-light: #ffffff;
+  --paper-dark: #1a2332;
+
+  /* Risk assessment colors */
+  --risk-low: #4caf50;
+  --risk-medium: #ff9800;
+  --risk-high: #f44336;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
 body {
   margin: 0;
-  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Oxygen',
+  font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  transition: background-color 0.3s ease;
 }
 
 code {
@@ -12,10 +44,40 @@ code {
     monospace;
 }
 
-* {
-  box-sizing: border-box;
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
 
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(99, 69, 184, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 69, 184, 0.5);
+}
+
+/* Dark mode scrollbar */
+.MuiTheme-dark ::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.MuiTheme-dark ::-webkit-scrollbar-thumb {
+  background: rgba(99, 69, 184, 0.3);
+}
+
+.MuiTheme-dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 69, 184, 0.5);
+}
+
+/* App container */
 .app-container {
   min-height: 100vh;
   display: flex;
@@ -24,48 +86,181 @@ code {
 
 .content-wrapper {
   flex: 1;
-  padding-top: 64px; /* Matches AppBar height */
+  display: flex;
+  flex-direction: column;
 }
 
-/* Gradients for cards */
-.gradient-card-primary {
-  background: linear-gradient(135deg, #1976d2 0%, #2196f3 100%);
+/* Gradient backgrounds */
+.gradient-primary {
+  background: linear-gradient(135deg, var(--iota-purple) 0%, var(--iota-purple-dark) 100%);
   color: white;
 }
 
-.gradient-card-secondary {
-  background: linear-gradient(135deg, #7b1fa2 0%, #9c27b0 100%);
+.gradient-secondary {
+  background: linear-gradient(135deg, var(--iota-teal) 0%, var(--iota-teal-dark) 100%);
   color: white;
 }
 
-.gradient-card-success {
-  background: linear-gradient(135deg, #388e3c 0%, #4caf50 100%);
+.gradient-blend {
+  background: linear-gradient(135deg, var(--iota-purple) 0%, var(--iota-teal) 100%);
   color: white;
 }
 
-.gradient-card-warning {
-  background: linear-gradient(135deg, #f57c00 0%, #ff9800 100%);
+.gradient-dark {
+  background: linear-gradient(135deg, var(--background-dark) 0%, var(--paper-dark) 100%);
   color: white;
 }
 
-.gradient-card-risk {
-  background: linear-gradient(135deg, #d32f2f 0%, #f44336 100%);
+.gradient-light {
+  background: linear-gradient(135deg, var(--background-light) 0%, var(--paper-light) 100%);
+  color: var(--iota-purple-dark);
+}
+
+/* Risk assessment gradients */
+.gradient-risk-low {
+  background: linear-gradient(135deg, var(--risk-low) 0%, #67bb6a 100%);
   color: white;
 }
 
-/* Animation for loading */
+.gradient-risk-medium {
+  background: linear-gradient(135deg, var(--risk-medium) 0%, #ffb74d 100%);
+  color: white;
+}
+
+.gradient-risk-high {
+  background: linear-gradient(135deg, var(--risk-high) 0%, #e57373 100%);
+  color: white;
+}
+
+/* Text gradients */
+.text-gradient-primary {
+  background: linear-gradient(90deg, var(--iota-purple) 0%, var(--iota-purple-light) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: transparent;
+}
+
+.text-gradient-secondary {
+  background: linear-gradient(90deg, var(--iota-teal) 0%, var(--iota-teal-light) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: transparent;
+}
+
+.text-gradient-blend {
+  background: linear-gradient(90deg, var(--iota-purple) 0%, var(--iota-teal) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Animations */
 @keyframes pulse {
   0% {
     opacity: 0.6;
+    transform: scale(0.98);
   }
   50% {
-    opacity: 0.8;
+    opacity: 1;
+    transform: scale(1.02);
   }
   100% {
     opacity: 0.6;
+    transform: scale(0.98);
   }
 }
 
-.loading-pulse {
-  animation: pulse 1.5s infinite ease-in-out;
+.animate-pulse {
+  animation: pulse 2s infinite ease-in-out;
+}
+
+@keyframes slideIn {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-in {
+  animation: slideIn 0.5s ease-out forwards;
+}
+
+/* Utility classes */
+.shadow-sm {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.shadow-md {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.shadow-lg {
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+}
+
+.rounded-lg {
+  border-radius: 12px;
+}
+
+.rounded-xl {
+  border-radius: 16px;
+}
+
+.rounded-2xl {
+  border-radius: 20px;
+}
+
+.backdrop-blur {
+  backdrop-filter: blur(8px);
+}
+
+/* Transition effects */
+.transition-all {
+  transition: all 0.3s ease;
+}
+
+.hover-scale {
+  transition: transform 0.3s ease;
+}
+
+.hover-scale:hover {
+  transform: scale(1.03);
+}
+
+/* Glassmorphism */
+.glass-light {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.glass-dark {
+  background: rgba(26, 35, 50, 0.7);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Specific components styling */
+.dashboard-card {
+  transition: all 0.3s ease;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.dashboard-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+}
+
+/* Focus state improvements for accessibility */
+*:focus-visible {
+  outline: 2px solid var(--iota-purple);
+  outline-offset: 2px;
 }

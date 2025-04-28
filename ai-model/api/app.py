@@ -328,6 +328,377 @@ def get_recommendations(address):
             "address": address
         }), 500
 
+@app.route('/api/ai/simulate-risk', methods=['POST'])
+def simulate_risk():
+    """
+    Simulate risk score based on different parameters
+    
+    Expects JSON payload with simulation parameters:
+    - collateralAmount: Amount of collateral
+    - borrowAmount: Amount borrowed
+    - asset: Asset type (e.g., 'smr', 'iota', 'eth')
+    - useIOTA: Whether IOTA is being used
+    - crossChainActivity: Whether cross-chain activity exists
+    - identityVerified: Whether identity is verified
+    
+    Returns simulated risk assessment
+    """
+    global risk_model
+    
+    # Initialize model if not already done
+    if risk_model is None:
+        initialize_model()
+    
+    try:
+        # Get request data
+        data = request.json
+        
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        logger.info(f"Simulating risk with parameters: {data}")
+        
+        # Required fields
+        collateral_amount = data.get('collateralAmount', 1000)
+        borrow_amount = data.get('borrowAmount', 500)
+        asset = data.get('asset', 'smr')
+        use_iota = data.get('useIOTA', False)
+        cross_chain_activity = data.get('crossChainActivity', False)
+        identity_verified = data.get('identityVerified', False)
+        
+        # Calculate collateral ratio
+        collateral_ratio = collateral_amount / borrow_amount if borrow_amount > 0 else float('inf')
+        
+        # Use risk model to simulate risk
+        if risk_model:
+            # Prepare simulation data
+            simulation_data = {
+                "collateralAmount": collateral_amount,
+                "borrowAmount": borrow_amount,
+                "asset": asset,
+                "useIOTA": use_iota,
+                "crossChainActivity": cross_chain_activity,
+                "identityVerified": identity_verified,
+                "collateralRatio": collateral_ratio
+            }
+            
+            # Call model for simulation
+            result = risk_model.simulate_risk(simulation_data)
+        else:
+            # Fallback simulation logic (similar to frontend implementation)
+            # Base risk factors
+            base_risk = 50  # Start at medium risk
+            
+            # Collateral ratio factor (-20 to +30 points)
+            collateral_ratio_impact = 0
+            if collateral_ratio >= 2.0:
+                collateral_ratio_impact = -20  # Very good ratio
+            elif collateral_ratio >= 1.5:
+                collateral_ratio_impact = -10  # Good ratio
+            elif collateral_ratio < 1.2:
+                collateral_ratio_impact = 20  # Dangerous ratio
+            elif collateral_ratio < 1.3:
+                collateral_ratio_impact = 10  # Risky ratio
+            
+            # Asset factor (-10 to +10 points)
+            asset_impact = 0
+            if asset in ['usdt', 'dai']:
+                asset_impact = -5  # Stablecoins are less risky
+            elif asset in ['eth', 'btc']:
+                asset_impact = 5  # Major cryptos have moderate risk
+            elif asset == 'smr':
+                asset_impact = -10  # IOTA's Shimmer has lower risk on this platform
+            
+            # IOTA usage factor (-15 to 0 points)
+            iota_impact = -15 if use_iota else 0
+            
+            # Cross-chain activity (-10 to 0 points)
+            cross_chain_impact = -10 if cross_chain_activity else 0
+            
+            # Identity verification (-15 to 0 points)
+            identity_impact = -15 if identity_verified else 0
+            
+            # Calculate total risk score
+            risk_score = base_risk + collateral_ratio_impact + asset_impact + iota_impact + cross_chain_impact + identity_impact
+            
+            # Ensure score is between 0 and 100
+            risk_score = max(0, min(100, risk_score))
+            
+            # Liquidation risk
+            liquidation_risk = max(0, min(100, 100 - (collateral_ratio * 50)))
+            
+            # Interest rate based on risk score
+            interest_rate = 3 + (risk_score / 10)
+            
+            # Max borrowing power
+            max_borrow_amount = collateral_amount * 0.8
+            
+            # Construct result
+            result = {
+                "riskScore": round(risk_score),
+                "collateralRatio": collateral_ratio,
+                "liquidationRisk": round(liquidation_risk),
+                "interestRate": round(interest_rate * 100) / 100,
+                "maxBorrowAmount": round(max_borrow_amount * 100) / 100,
+                "factors": [
+                    {
+                        "name": "Collateral Ratio",
+                        "impact": collateral_ratio_impact,
+                        "description": f"{collateral_ratio:.2f}x ratio {'decreases' if collateral_ratio_impact <= 0 else 'increases'} risk"
+                    },
+                    {
+                        "name": "Asset Selection",
+                        "impact": asset_impact,
+                        "description": f"{asset.upper()} {'decreases' if asset_impact <= 0 else 'increases'} risk"
+                    },
+                    {
+                        "name": "IOTA Integration",
+                        "impact": iota_impact,
+                        "description": "IOTA usage lowers risk" if use_iota else "No IOTA integration"
+                    },
+                    {
+                        "name": "Cross-Chain Activity",
+                        "impact": cross_chain_impact,
+                        "description": "Cross-chain activity lowers risk" if cross_chain_activity else "No cross-chain activity"
+                    },
+                    {
+                        "name": "Identity Verification",
+                        "impact": identity_impact,
+                        "description": "Verified identity lowers risk" if identity_verified else "No identity verification"
+                    }
+                ]
+            }
+        
+        logger.info(f"Risk simulation completed: Score = {result['riskScore']}")
+        
+        return jsonify(result)
+    
+    except Exception as e:
+        logger.error(f"Error simulating risk: {e}")
+        logger.error(traceback.format_exc())
+        
+        return jsonify({
+            "error": "Error simulating risk",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/ai/scenario-analysis', methods=['POST'])
+def scenario_analysis():
+    """
+    Analyze multiple scenarios for comparison
+    
+    Expects JSON payload with array of scenarios, each containing:
+    - name: Scenario name
+    - collateralAmount: Amount of collateral
+    - borrowAmount: Amount borrowed
+    - asset: Asset type
+    - useIOTA: Whether IOTA is being used
+    - crossChainActivity: Whether cross-chain activity exists
+    - identityVerified: Whether identity is verified
+    
+    Returns analysis results for all scenarios
+    """
+    global risk_model
+    
+    # Initialize model if not already done
+    if risk_model is None:
+        initialize_model()
+    
+    try:
+        # Get request data
+        data = request.json
+        
+        if not data or 'scenarios' not in data:
+            return jsonify({"error": "No scenarios provided"}), 400
+        
+        scenarios = data.get('scenarios', [])
+        
+        if not scenarios:
+            return jsonify({"error": "Empty scenarios array"}), 400
+        
+        logger.info(f"Analyzing {len(scenarios)} scenarios")
+        
+        results = []
+        
+        # Process each scenario
+        for scenario in scenarios:
+            name = scenario.get('name', 'Unnamed Scenario')
+            
+            # Make a separate request to the simulate-risk endpoint for each scenario
+            simulation_params = {
+                "collateralAmount": scenario.get('collateralAmount', 1000),
+                "borrowAmount": scenario.get('borrowAmount', 500),
+                "asset": scenario.get('asset', 'smr'),
+                "useIOTA": scenario.get('useIOTA', False),
+                "crossChainActivity": scenario.get('crossChainActivity', False),
+                "identityVerified": scenario.get('identityVerified', False)
+            }
+            
+            # Simulate risk for this scenario
+            simulation_result = simulate_risk_internal(simulation_params)
+            
+            # Add scenario name and original parameters
+            result = {
+                "scenarioName": name,
+                "collateralAmount": simulation_params["collateralAmount"],
+                "borrowAmount": simulation_params["borrowAmount"],
+                "asset": simulation_params["asset"],
+                "useIOTA": simulation_params["useIOTA"],
+                "crossChainActivity": simulation_params["crossChainActivity"],
+                "identityVerified": simulation_params["identityVerified"],
+                **simulation_result
+            }
+            
+            # Add radar chart factors
+            result["factors"] = [
+                {
+                    "name": "Collateral Ratio",
+                    "value": (100 - result["factors"][0]["impact"] * 2),
+                    "impact": result["factors"][0]["impact"],
+                    "fullMark": 100
+                },
+                {
+                    "name": "Asset Selection",
+                    "value": (100 - result["factors"][1]["impact"] * 2),
+                    "impact": result["factors"][1]["impact"],
+                    "fullMark": 100
+                },
+                {
+                    "name": "IOTA Integration",
+                    "value": 100 if simulation_params["useIOTA"] else 50,
+                    "impact": result["factors"][2]["impact"],
+                    "fullMark": 100
+                },
+                {
+                    "name": "Cross-Chain Activity",
+                    "value": 100 if simulation_params["crossChainActivity"] else 50,
+                    "impact": result["factors"][3]["impact"],
+                    "fullMark": 100
+                },
+                {
+                    "name": "Identity Verification",
+                    "value": 100 if simulation_params["identityVerified"] else 50,
+                    "impact": result["factors"][4]["impact"],
+                    "fullMark": 100
+                }
+            ]
+            
+            results.append(result)
+        
+        logger.info(f"Scenario analysis completed for {len(results)} scenarios")
+        
+        return jsonify(results)
+    
+    except Exception as e:
+        logger.error(f"Error performing scenario analysis: {e}")
+        logger.error(traceback.format_exc())
+        
+        return jsonify({
+            "error": "Error performing scenario analysis",
+            "message": str(e)
+        }), 500
+
+def simulate_risk_internal(params):
+    """Internal function to simulate risk without HTTP request"""
+    # Calculate collateral ratio
+    collateral_amount = params.get('collateralAmount', 1000)
+    borrow_amount = params.get('borrowAmount', 500)
+    asset = params.get('asset', 'smr')
+    use_iota = params.get('useIOTA', False)
+    cross_chain_activity = params.get('crossChainActivity', False)
+    identity_verified = params.get('identityVerified', False)
+    
+    collateral_ratio = collateral_amount / borrow_amount if borrow_amount > 0 else float('inf')
+    
+    # Use risk model to simulate risk
+    if risk_model:
+        # Call model for simulation
+        return risk_model.simulate_risk(params)
+    else:
+        # Fallback simulation logic (similar to frontend implementation)
+        # Base risk factors
+        base_risk = 50  # Start at medium risk
+        
+        # Collateral ratio factor (-20 to +30 points)
+        collateral_ratio_impact = 0
+        if collateral_ratio >= 2.0:
+            collateral_ratio_impact = -20  # Very good ratio
+        elif collateral_ratio >= 1.5:
+            collateral_ratio_impact = -10  # Good ratio
+        elif collateral_ratio < 1.2:
+            collateral_ratio_impact = 20  # Dangerous ratio
+        elif collateral_ratio < 1.3:
+            collateral_ratio_impact = 10  # Risky ratio
+        
+        # Asset factor (-10 to +10 points)
+        asset_impact = 0
+        if asset in ['usdt', 'dai']:
+            asset_impact = -5  # Stablecoins are less risky
+        elif asset in ['eth', 'btc']:
+            asset_impact = 5  # Major cryptos have moderate risk
+        elif asset == 'smr':
+            asset_impact = -10  # IOTA's Shimmer has lower risk on this platform
+        
+        # IOTA usage factor (-15 to 0 points)
+        iota_impact = -15 if use_iota else 0
+        
+        # Cross-chain activity (-10 to 0 points)
+        cross_chain_impact = -10 if cross_chain_activity else 0
+        
+        # Identity verification (-15 to 0 points)
+        identity_impact = -15 if identity_verified else 0
+        
+        # Calculate total risk score
+        risk_score = base_risk + collateral_ratio_impact + asset_impact + iota_impact + cross_chain_impact + identity_impact
+        
+        # Ensure score is between 0 and 100
+        risk_score = max(0, min(100, risk_score))
+        
+        # Liquidation risk
+        liquidation_risk = max(0, min(100, 100 - (collateral_ratio * 50)))
+        
+        # Interest rate based on risk score
+        interest_rate = 3 + (risk_score / 10)
+        
+        # Max borrowing power
+        max_borrow_amount = collateral_amount * 0.8
+        
+        # Construct result
+        return {
+            "riskScore": round(risk_score),
+            "collateralRatio": collateral_ratio,
+            "liquidationRisk": round(liquidation_risk),
+            "interestRate": round(interest_rate * 100) / 100,
+            "maxBorrowAmount": round(max_borrow_amount * 100) / 100,
+            "factors": [
+                {
+                    "name": "Collateral Ratio",
+                    "impact": collateral_ratio_impact,
+                    "description": f"{collateral_ratio:.2f}x ratio {'decreases' if collateral_ratio_impact <= 0 else 'increases'} risk"
+                },
+                {
+                    "name": "Asset Selection",
+                    "impact": asset_impact,
+                    "description": f"{asset.upper()} {'decreases' if asset_impact <= 0 else 'increases'} risk"
+                },
+                {
+                    "name": "IOTA Integration",
+                    "impact": iota_impact,
+                    "description": "IOTA usage lowers risk" if use_iota else "No IOTA integration"
+                },
+                {
+                    "name": "Cross-Chain Activity",
+                    "impact": cross_chain_impact,
+                    "description": "Cross-chain activity lowers risk" if cross_chain_activity else "No cross-chain activity"
+                },
+                {
+                    "name": "Identity Verification",
+                    "impact": identity_impact,
+                    "description": "Verified identity lowers risk" if identity_verified else "No identity verification"
+                }
+            ]
+        }
+
 if __name__ == '__main__':
     # Initialize model
     initialize_model()

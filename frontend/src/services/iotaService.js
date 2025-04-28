@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Get API URL from environment or use default
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002';
 
 /**
  * IOTA Service

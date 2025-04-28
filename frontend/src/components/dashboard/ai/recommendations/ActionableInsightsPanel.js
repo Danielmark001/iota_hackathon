@@ -5,597 +5,540 @@ import {
   Paper,
   Typography,
   Button,
+  Chip,
+  Divider,
   Card,
   CardContent,
   CardActions,
-  Divider,
-  Chip,
-  Stack,
-  Stepper,
-  Step,
-  StepLabel,
-  StepContent,
-  Link,
   Collapse,
   IconButton,
-  Alert,
-  useTheme
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  ListItemSecondaryAction,
+  Tooltip,
+  useTheme,
+  alpha,
+  Alert
 } from '@mui/material';
 import {
-  Lightbulb,
-  TrendingUp,
-  TrendingDown,
-  CheckCircle,
-  ArrowForward,
-  ExpandMore,
-  ExpandLess,
-  Info,
-  PriorityHigh,
-  Done,
-  Star
+  ExpandMore as ExpandMoreIcon,
+  TrendingUp as TrendingUpIcon,
+  TrendingDown as TrendingDownIcon,
+  Check as CheckIcon,
+  Info as InfoIcon,
+  VerifiedUser as VerifiedUserIcon,
+  AccountBalance as AccountBalanceIcon,
+  Compare as CompareIcon,
+  Timeline as TimelineIcon,
+  ArrowForward as ArrowForwardIcon,
+  AddCircle as AddCircleIcon,
+  Star as StarIcon,
+  CheckCircle as CheckCircleIcon,
+  Circle as CircleIcon,
+  ArrowUpward as ArrowUpwardIcon,
+  ArrowDownward as ArrowDownwardIcon
 } from '@mui/icons-material';
-import { Link as RouterLink } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
-const ActionableInsightsPanel = ({ recommendations = [], riskFactors = [], riskScore = 50 }) => {
+// Helper component for expandable card
+const ExpandableCard = ({ title, description, details, impact, type, actions, expanded: initialExpanded = false }) => {
   const theme = useTheme();
-  const [expandedRecommendation, setExpandedRecommendation] = useState(null);
+  const [expanded, setExpanded] = useState(initialExpanded);
   
-  // Get risk category based on score
-  const getRiskCategory = (score) => {
-    if (score <= 30) return { text: 'Low Risk', color: 'success' };
-    if (score <= 60) return { text: 'Medium Risk', color: 'warning' };
-    return { text: 'High Risk', color: 'error' };
-  };
-  
-  // Toggle recommendation expansion
-  const toggleRecommendation = (index) => {
-    if (expandedRecommendation === index) {
-      setExpandedRecommendation(null);
-    } else {
-      setExpandedRecommendation(index);
-    }
-  };
-  
-  // Get icon based on impact
-  const getImpactIcon = (impact) => {
-    switch (impact) {
-      case 'high':
-        return <PriorityHigh color="error" />;
-      case 'medium':
-        return <Info color="warning" />;
-      case 'low':
-        return <Info color="info" />;
-      case 'positive':
-        return <Star color="success" />;
-      default:
-        return <Info />;
-    }
-  };
-  
-  // Get color based on impact
+  // Determine impact color
   const getImpactColor = (impact) => {
-    switch (impact) {
+    switch (impact.toLowerCase()) {
       case 'high':
-        return 'error';
+        return theme.palette.success.main;
       case 'medium':
-        return 'warning';
+        return theme.palette.warning.main;
       case 'low':
-        return 'info';
-      case 'positive':
-        return 'success';
+        return theme.palette.info.main;
       default:
-        return 'primary';
+        return theme.palette.primary.main;
     }
   };
   
-  // Get path based on recommendation type
-  const getActionPath = (type) => {
-    switch (type) {
+  // Determine icon based on recommendation type
+  const getTypeIcon = (type) => {
+    switch (type.toLowerCase()) {
       case 'verification':
-        return '/identity';
+        return <VerifiedUserIcon />;
       case 'collateral':
-        return '/deposit';
-      case 'network':
-        return '/transactions';
-      case 'yield':
-        return '/portfolio';
-      case 'strategy':
-        return '/dashboard';
+        return <AccountBalanceIcon />;
+      case 'activity':
+        return <TimelineIcon />;
+      case 'comparison':
+        return <CompareIcon />;
       default:
-        return '/dashboard';
+        return <InfoIcon />;
     }
   };
   
-  // Generate steps for a recommendation
-  const generateSteps = (recommendation) => {
-    // Define steps based on recommendation type
-    switch (recommendation.type) {
+  return (
+    <Card
+      elevation={0}
+      sx={{
+        mb: 2,
+        border: `1px solid ${theme.palette.divider}`,
+        borderLeft: `4px solid ${getImpactColor(impact)}`,
+        borderRadius: 2,
+        transition: 'all 0.2s ease',
+        '&:hover': {
+          boxShadow: `0 4px 12px ${alpha(theme.palette.primary.main, 0.08)}`,
+        }
+      }}
+    >
+      <CardContent sx={{ pb: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 1 }}>
+          <Box
+            sx={{
+              backgroundColor: alpha(getImpactColor(impact), 0.1),
+              color: getImpactColor(impact),
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              p: 1,
+              borderRadius: 1,
+              mr: 2
+            }}
+          >
+            {getTypeIcon(type)}
+          </Box>
+          <Box sx={{ flexGrow: 1 }}>
+            <Typography variant="h6" component="h3" gutterBottom>
+              {title}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" paragraph>
+              {description}
+            </Typography>
+          </Box>
+          <Chip
+            label={`${impact} Impact`}
+            size="small"
+            sx={{
+              backgroundColor: alpha(getImpactColor(impact), 0.1),
+              color: getImpactColor(impact),
+              fontWeight: 'medium',
+              ml: 1
+            }}
+          />
+        </Box>
+      </CardContent>
+      
+      <CardActions 
+        sx={{ 
+          justifyContent: 'space-between',
+          px: 2,
+        }}
+      >
+        <Button
+          size="small"
+          onClick={() => setExpanded(!expanded)}
+          startIcon={
+            <ExpandMoreIcon
+              sx={{
+                transform: expanded ? 'rotate(180deg)' : 'rotate(0)',
+                transition: 'transform 0.2s',
+              }}
+            />
+          }
+        >
+          {expanded ? 'Less Details' : 'More Details'}
+        </Button>
+        
+        {actions && (
+          <Button
+            size="small"
+            variant="contained"
+            disableElevation
+            endIcon={<ArrowForwardIcon />}
+            onClick={actions.onClick}
+            sx={{
+              borderRadius: 2,
+              textTransform: 'none',
+              fontSize: '0.8125rem',
+              py: 0.5,
+              px: 1.5
+            }}
+          >
+            {actions.label}
+          </Button>
+        )}
+      </CardActions>
+      
+      <Collapse in={expanded} timeout="auto" unmountOnExit>
+        <CardContent sx={{ pt: 0, pb: 2 }}>
+          <Divider sx={{ my: 1 }} />
+          <Typography variant="body2" paragraph>
+            {details}
+          </Typography>
+          
+          <Box
+            sx={{
+              bgcolor: alpha(theme.palette.info.main, 0.05),
+              borderRadius: 1,
+              p: 1.5,
+              display: 'flex',
+              alignItems: 'flex-start',
+            }}
+          >
+            <InfoIcon
+              fontSize="small"
+              sx={{
+                color: theme.palette.info.main,
+                mr: 1,
+                mt: 0.3
+              }}
+            />
+            <Typography variant="body2" color="text.secondary">
+              Implementing this recommendation could improve your risk score and potentially lower borrowing costs.
+            </Typography>
+          </Box>
+        </CardContent>
+      </Collapse>
+    </Card>
+  );
+};
+
+// Progress indicator component
+const ProgressSteps = ({ currentScore, targetScore }) => {
+  const theme = useTheme();
+  
+  // Determine risk level and color
+  const getRiskLevel = (score) => {
+    if (score <= 30) return { label: 'Low Risk', color: theme.palette.success.main };
+    if (score <= 60) return { label: 'Medium Risk', color: theme.palette.warning.main };
+    return { label: 'High Risk', color: theme.palette.error.main };
+  };
+  
+  const currentRisk = getRiskLevel(currentScore);
+  const targetRisk = getRiskLevel(targetScore);
+  
+  const steps = [
+    { value: 100, label: 'High Risk' },
+    { value: 60, label: 'Medium Risk' },
+    { value: 30, label: 'Low Risk' },
+    { value: 0, label: 'Minimal Risk' }
+  ];
+  
+  return (
+    <Box sx={{ width: '100%', mb: 4 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+        <Typography variant="body2" color="text.secondary">
+          Current: <span style={{ color: currentRisk.color, fontWeight: 500 }}>{currentScore} ({currentRisk.label})</span>
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Target: <span style={{ color: targetRisk.color, fontWeight: 500 }}>{targetScore} ({targetRisk.label})</span>
+        </Typography>
+      </Box>
+      
+      <Box sx={{ position: 'relative', pt: 3, pb: 1 }}>
+        {/* Progress bar */}
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 8,
+            borderRadius: 4,
+            bgcolor: alpha(theme.palette.grey[200], 0.3),
+          }}
+        />
+        
+        {/* Risk zones */}
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 0,
+            left: '0%',
+            width: '40%',
+            height: 8,
+            borderRadius: '4px 0 0 4px',
+            bgcolor: alpha(theme.palette.error.main, 0.2),
+          }}
+        />
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 0,
+            left: '40%',
+            width: '30%',
+            height: 8,
+            bgcolor: alpha(theme.palette.warning.main, 0.2),
+          }}
+        />
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 0,
+            left: '70%',
+            width: '30%',
+            height: 8,
+            borderRadius: '0 4px 4px 0',
+            bgcolor: alpha(theme.palette.success.main, 0.2),
+          }}
+        />
+        
+        {/* Current and target markers */}
+        <Tooltip title="Current Risk Score">
+          <Box
+            sx={{
+              position: 'absolute',
+              top: 0,
+              left: `${100 - currentScore}%`,
+              zIndex: 2,
+              transform: 'translate(-50%, -50%)',
+            }}
+          >
+            <Box
+              sx={{
+                width: 16,
+                height: 16,
+                borderRadius: '50%',
+                bgcolor: currentRisk.color,
+                border: `2px solid ${theme.palette.background.paper}`,
+                boxShadow: theme.shadows[2],
+              }}
+            />
+          </Box>
+        </Tooltip>
+        
+        <Tooltip title="Target Risk Score">
+          <Box
+            sx={{
+              position: 'absolute',
+              top: 0,
+              left: `${100 - targetScore}%`,
+              zIndex: 1,
+              transform: 'translate(-50%, -50%)',
+            }}
+          >
+            <Box
+              sx={{
+                width: 14,
+                height: 14,
+                borderRadius: '50%',
+                bgcolor: theme.palette.background.paper,
+                border: `2px solid ${targetRisk.color}`,
+                boxShadow: `0 0 0 2px ${alpha(targetRisk.color, 0.3)}`,
+              }}
+            />
+          </Box>
+        </Tooltip>
+        
+        {/* Step markers */}
+        {steps.map((step) => (
+          <Box
+            key={step.value}
+            sx={{
+              position: 'absolute',
+              top: 17,
+              left: `${100 - step.value}%`,
+              transform: 'translateX(-50%)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+            }}
+          >
+            <Box
+              sx={{
+                width: 2,
+                height: 8,
+                bgcolor: theme.palette.divider,
+              }}
+            />
+            <Typography
+              variant="caption"
+              sx={{
+                whiteSpace: 'nowrap',
+                mt: 0.5,
+                opacity: 0.7,
+                fontSize: '0.65rem',
+              }}
+            >
+              {step.label}
+            </Typography>
+          </Box>
+        ))}
+      </Box>
+    </Box>
+  );
+};
+
+const ActionableInsightsPanel = ({ recommendations, riskFactors, riskScore }) => {
+  const theme = useTheme();
+  const navigate = useNavigate();
+  
+  // Simulate a target risk score by reducing current score by 15 points
+  const targetRiskScore = Math.max(10, riskScore - 15);
+  
+  // Group recommendations by impact level
+  const groupedRecommendations = recommendations.reduce((acc, rec) => {
+    const impact = rec.impact.toLowerCase();
+    if (!acc[impact]) {
+      acc[impact] = [];
+    }
+    acc[impact].push(rec);
+    return acc;
+  }, {});
+  
+  // Order priority as high, medium, low
+  const orderedImpacts = ['high', 'medium', 'low'];
+  
+  // Generate actions for recommendations
+  const getActionForType = (type) => {
+    switch (type.toLowerCase()) {
       case 'verification':
-        return [
-          {
-            label: 'Go to Identity Verification',
-            description: 'Navigate to the Identity page to start the verification process.',
-            path: '/identity'
-          },
-          {
-            label: 'Connect IOTA Wallet',
-            description: 'Connect your IOTA wallet to enable secure identity verification.',
-            path: '/wallet'
-          },
-          {
-            label: 'Complete Verification Process',
-            description: 'Follow the steps to verify your identity using IOTA\'s decentralized identity framework.',
-            path: null
-          }
-        ];
+        return {
+          label: 'Verify Identity',
+          onClick: () => navigate('/identity')
+        };
       case 'collateral':
-        return [
-          {
-            label: 'Assess Collateral Needs',
-            description: 'Use the What-if Simulator to determine optimal collateral amount.',
-            path: null
-          },
-          {
-            label: 'Deposit Additional Collateral',
-            description: 'Go to the Deposit page to add more collateral to your position.',
-            path: '/deposit'
-          },
-          {
-            label: 'Confirm New Health Factor',
-            description: 'Check your updated risk score and health factor after increasing collateral.',
-            path: '/dashboard'
-          }
-        ];
-      case 'network':
-        return [
-          {
-            label: 'Connect IOTA Wallet',
-            description: 'Set up and connect your IOTA wallet if you haven\'t already.',
-            path: '/wallet'
-          },
-          {
-            label: 'Transfer Assets to IOTA',
-            description: 'Use the bridge to transfer assets to the IOTA network.',
-            path: '/bridge'
-          },
-          {
-            label: 'Conduct Regular Transactions',
-            description: 'Perform regular transactions on the IOTA network to build your on-chain reputation.',
-            path: null
-          }
-        ];
-      case 'yield':
-        return [
-          {
-            label: 'Review Current Strategy',
-            description: 'Examine your current yield strategy and performance.',
-            path: '/portfolio'
-          },
-          {
-            label: 'Switch to Recommended Strategy',
-            description: 'Adjust your positions based on the optimized strategy.',
-            path: null
-          },
-          {
-            label: 'Monitor Performance',
-            description: 'Regularly check your new yield performance and make adjustments as needed.',
-            path: '/dashboard'
-          }
-        ];
-      case 'strategy':
-        return [
-          {
-            label: 'Analyze Current Position',
-            description: 'Review your current borrowing and lending positions.',
-            path: '/dashboard'
-          },
-          {
-            label: 'Diversify Collateral',
-            description: 'Add different asset types to your collateral portfolio.',
-            path: '/deposit'
-          },
-          {
-            label: 'Balance Risk Exposure',
-            description: 'Ensure no single asset represents more than 50% of your collateral.',
-            path: null
-          }
-        ];
+        return {
+          label: 'Adjust Collateral',
+          onClick: () => navigate('/borrow')
+        };
+      case 'activity':
+        return {
+          label: 'View Opportunities',
+          onClick: () => navigate('/cross-layer')
+        };
       default:
-        return [
-          {
-            label: 'Review Recommendation',
-            description: 'Understand the details of this recommendation.',
-            path: null
-          },
-          {
-            label: 'Take Action',
-            description: 'Follow the specific steps to implement this recommendation.',
-            path: null
-          }
-        ];
+        return {
+          label: 'Learn More',
+          onClick: () => {}
+        };
     }
   };
   
   return (
     <Box>
-      {/* Overall risk assessment summary */}
-      <Paper elevation={3} sx={{ p: 3, mb: 4, borderRadius: 2 }}>
+      <Paper 
+        elevation={0} 
+        sx={{ 
+          p: 3, 
+          mb: 4, 
+          border: `1px solid ${theme.palette.divider}`,
+          borderRadius: 2,
+          background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.05)} 0%, ${alpha(theme.palette.background.paper, 0.5)} 100%)`,
+        }}
+      >
         <Grid container spacing={3} alignItems="center">
-          <Grid item xs={12} md={8}>
+          <Grid item xs={12} md={7}>
             <Typography variant="h6" gutterBottom>
-              Your Risk Assessment Summary
+              Improving Your Risk Profile
             </Typography>
-            <Typography variant="body1" paragraph>
-              Based on our AI analysis, your lending profile is currently rated as{' '}
-              <Box component="span" sx={{ fontWeight: 'bold', color: theme.palette[getRiskCategory(riskScore).color].main }}>
-                {getRiskCategory(riskScore).text} ({riskScore} points)
-              </Box>
-              . We've identified {recommendations.length} actionable recommendations that can improve your risk profile.
+            <Typography variant="body2" paragraph>
+              By implementing the recommendations below, you can potentially improve your risk score from {riskScore} to around {targetRiskScore}, which would reduce your borrowing costs and increase your borrowing capacity.
             </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Implementing these recommendations could potentially reduce your risk score by{' '}
-              <Box component="span" sx={{ fontWeight: 'bold' }}>
-                {recommendations.reduce((sum, rec) => {
-                  // Estimate points reduction based on impact
-                  const pointsMap = { high: 15, medium: 10, low: 5, positive: 5 };
-                  return sum + (pointsMap[rec.impact] || 0);
-                }, 0)} points
-              </Box>{' '}
-              and improve your borrowing terms.
-            </Typography>
+            
+            <ProgressSteps currentScore={riskScore} targetScore={targetRiskScore} />
           </Grid>
-          <Grid item xs={12} md={4} sx={{ textAlign: 'center' }}>
-            <Box sx={{ 
-              display: 'inline-flex',
-              position: 'relative',
-              backgroundColor: theme.palette.grey[100],
-              borderRadius: '50%',
-              p: 2
-            }}>
-              <Box sx={{ position: 'relative', display: 'inline-flex' }}>
-                <Box
-                  sx={{
-                    width: 100,
-                    height: 100,
-                    borderRadius: '50%',
-                    backgroundColor: theme.palette.grey[200],
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxShadow: theme.shadows[2]
-                  }}
-                >
-                  <Typography variant="h3" component="div" fontWeight="medium" color={theme.palette[getRiskCategory(riskScore).color].main}>
-                    {riskScore}
-                  </Typography>
-                </Box>
-                <Box
-                  sx={{
-                    position: 'absolute',
-                    top: '-16px',
-                    right: '-16px',
-                    backgroundColor: theme.palette.background.paper,
-                    borderRadius: '50%',
-                    p: 0.5,
-                    boxShadow: theme.shadows[2]
-                  }}
-                >
-                  {riskScore <= 30 ? (
-                    <CheckCircle color="success" fontSize="large" />
-                  ) : riskScore <= 60 ? (
-                    <Info color="warning" fontSize="large" />
-                  ) : (
-                    <PriorityHigh color="error" fontSize="large" />
-                  )}
-                </Box>
-              </Box>
+          
+          <Grid item xs={12} md={5}>
+            <Box 
+              sx={{ 
+                border: `1px solid ${theme.palette.divider}`,
+                borderRadius: 2,
+                p: 2,
+                height: '100%',
+              }}
+            >
+              <Typography variant="subtitle2" gutterBottom>
+                Potential Benefits
+              </Typography>
+              <List dense sx={{ pt: 0 }}>
+                <ListItem>
+                  <ListItemIcon sx={{ minWidth: 36 }}>
+                    <ArrowDownwardIcon fontSize="small" sx={{ color: theme.palette.success.main }} />
+                  </ListItemIcon>
+                  <ListItemText 
+                    primary="Lower Interest Rates" 
+                    secondary="Reduce borrowing costs by up to 1.5%" 
+                  />
+                </ListItem>
+                <ListItem>
+                  <ListItemIcon sx={{ minWidth: 36 }}>
+                    <ArrowUpwardIcon fontSize="small" sx={{ color: theme.palette.success.main }} />
+                  </ListItemIcon>
+                  <ListItemText 
+                    primary="Higher Borrowing Capacity" 
+                    secondary="Increase borrowing limit by ~20%" 
+                  />
+                </ListItem>
+                <ListItem>
+                  <ListItemIcon sx={{ minWidth: 36 }}>
+                    <CheckCircleIcon fontSize="small" sx={{ color: theme.palette.success.main }} />
+                  </ListItemIcon>
+                  <ListItemText 
+                    primary="Lower Liquidation Risk" 
+                    secondary="More resilient during market volatility" 
+                  />
+                </ListItem>
+              </List>
             </Box>
           </Grid>
         </Grid>
       </Paper>
       
-      {/* Key recommendations */}
       <Typography variant="h6" gutterBottom>
-        Personalized Recommendations
+        Recommended Actions
       </Typography>
       
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        {recommendations.length > 0 ? (
-          recommendations.map((recommendation, index) => (
-            <Grid item xs={12} key={index}>
-              <Card variant={index === 0 ? 'outlined' : 'outlined'} sx={{ 
-                borderColor: index === 0 ? theme.palette[getImpactColor(recommendation.impact)].main : 'inherit',
-                boxShadow: index === 0 ? `0 0 8px ${theme.palette[getImpactColor(recommendation.impact)].main}` : 'none',
-                position: 'relative',
-                overflow: 'visible'
-              }}>
-                {index === 0 && (
-                  <Box sx={{ 
-                    position: 'absolute', 
-                    top: -12, 
-                    left: 16, 
-                    bgcolor: theme.palette.background.paper,
-                    color: theme.palette[getImpactColor(recommendation.impact)].main,
-                    px: 1,
-                    borderRadius: 1,
-                    border: `1px solid ${theme.palette[getImpactColor(recommendation.impact)].main}`,
-                    fontSize: '0.75rem',
-                    fontWeight: 'bold'
-                  }}>
-                    TOP PRIORITY
-                  </Box>
-                )}
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 1 }}>
-                    <Box sx={{ mr: 1.5, mt: 0.5 }}>
-                      {getImpactIcon(recommendation.impact)}
-                    </Box>
-                    <Box sx={{ flex: 1 }}>
-                      <Typography variant="h6" gutterBottom>
-                        {recommendation.title}
-                      </Typography>
-                      <Typography variant="body1" paragraph>
-                        {recommendation.description}
-                      </Typography>
-                      
-                      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
-                        <Chip
-                          label={`${recommendation.impact === 'high' ? 'High' : recommendation.impact === 'medium' ? 'Medium' : recommendation.impact === 'low' ? 'Low' : 'Positive'} Impact`}
-                          color={getImpactColor(recommendation.impact)}
-                          size="small"
-                        />
-                        <Chip
-                          label={recommendation.type === 'verification' ? 'Identity' : 
-                                 recommendation.type === 'collateral' ? 'Collateral' :
-                                 recommendation.type === 'network' ? 'Network' :
-                                 recommendation.type === 'yield' ? 'Yield' :
-                                 recommendation.type === 'strategy' ? 'Strategy' : 'General'}
-                          size="small"
-                          variant="outlined"
-                        />
-                      </Stack>
-                      
-                      {recommendation.details && (
-                        <Collapse in={expandedRecommendation === index}>
-                          <Box sx={{ mt: 2, mb: 2 }}>
-                            <Typography variant="subtitle2" gutterBottom>
-                              How This Improves Your Risk Profile
-                            </Typography>
-                            <Typography variant="body2" paragraph>
-                              {recommendation.details}
-                            </Typography>
-                            
-                            <Typography variant="subtitle2" gutterBottom>
-                              Step-by-Step Implementation
-                            </Typography>
-                            <Stepper orientation="vertical" sx={{ mt: 2 }}>
-                              {generateSteps(recommendation).map((step, stepIndex) => (
-                                <Step key={stepIndex} active completed={false}>
-                                  <StepLabel>{step.label}</StepLabel>
-                                  <StepContent>
-                                    <Typography variant="body2">{step.description}</Typography>
-                                    {step.path && (
-                                      <Box sx={{ mt: 1 }}>
-                                        <Button 
-                                          variant="outlined" 
-                                          size="small" 
-                                          component={RouterLink} 
-                                          to={step.path}
-                                          endIcon={<ArrowForward />}
-                                        >
-                                          Go to {step.path.substring(1)}
-                                        </Button>
-                                      </Box>
-                                    )}
-                                  </StepContent>
-                                </Step>
-                              ))}
-                            </Stepper>
-                          </Box>
-                        </Collapse>
-                      )}
-                    </Box>
-                  </Box>
-                </CardContent>
-                
-                <Divider />
-                
-                <CardActions sx={{ justifyContent: 'space-between' }}>
-                  <Button
-                    startIcon={expandedRecommendation === index ? <ExpandLess /> : <ExpandMore />}
-                    onClick={() => toggleRecommendation(index)}
-                    size="small"
-                  >
-                    {expandedRecommendation === index ? 'Show Less' : 'Show Details'}
-                  </Button>
-                  
-                  <Button
-                    variant="contained"
-                    color={getImpactColor(recommendation.impact)}
-                    size="small"
-                    component={RouterLink}
-                    to={getActionPath(recommendation.type)}
-                    endIcon={<ArrowForward />}
-                  >
-                    Take Action
-                  </Button>
-                </CardActions>
-              </Card>
-            </Grid>
-          ))
-        ) : (
-          <Grid item xs={12}>
-            <Alert severity="success" icon={<CheckCircle />} sx={{ mb: 2 }}>
-              <Typography variant="subtitle1">
-                No Recommendations Needed
-              </Typography>
-              <Typography variant="body2">
-                Your risk profile is optimized! Continue maintaining your current practices.
-              </Typography>
-            </Alert>
-          </Grid>
-        )}
-      </Grid>
+      {orderedImpacts.map(impact => 
+        groupedRecommendations[impact] && (
+          <Box key={impact} sx={{ mb: 4 }}>
+            <Typography 
+              variant="subtitle1" 
+              color="text.secondary" 
+              gutterBottom
+              sx={{ 
+                display: 'flex', 
+                alignItems: 'center',
+                opacity: 0.8,
+                '&::after': {
+                  content: '""',
+                  display: 'block',
+                  height: 1,
+                  bgcolor: theme.palette.divider,
+                  flex: 1,
+                  ml: 2
+                }
+              }}
+            >
+              {impact.charAt(0).toUpperCase() + impact.slice(1)} Priority
+            </Typography>
+            
+            {groupedRecommendations[impact].map((recommendation, index) => (
+              <ExpandableCard
+                key={index}
+                title={recommendation.title}
+                description={recommendation.description}
+                details={recommendation.details}
+                impact={recommendation.impact}
+                type={recommendation.type}
+                actions={getActionForType(recommendation.type)}
+                expanded={index === 0 && impact === 'high'}
+              />
+            ))}
+          </Box>
+        )
+      )}
       
-      {/* Risk improvement potential */}
-      <Paper elevation={3} sx={{ p: 3, borderRadius: 2, mb: 4 }}>
-        <Typography variant="h6" gutterBottom>
-          Risk Improvement Potential
-        </Typography>
-        
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
-            <Card variant="outlined" sx={{ height: '100%' }}>
-              <CardContent>
-                <Typography variant="subtitle1" gutterBottom>
-                  Current Risk Factors
-                </Typography>
-                <Box sx={{ mb: 1 }}>
-                  {riskFactors.filter(f => f.contribution > 0).slice(0, 3).map((factor, index) => (
-                    <Box key={index} sx={{ mb: 1 }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Typography variant="body2">
-                          {factor.name.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                        </Typography>
-                        <Chip
-                          label={`+${factor.contribution} pts`}
-                          size="small"
-                          color="error"
-                          icon={<TrendingUp fontSize="small" />}
-                        />
-                      </Box>
-                      <Typography variant="caption" color="text.secondary">
-                        {factor.description}
-                      </Typography>
-                    </Box>
-                  ))}
-                  
-                  {riskFactors.filter(f => f.contribution > 0).length === 0 && (
-                    <Typography variant="body2" color="text.secondary">
-                      No negative risk factors identified.
-                    </Typography>
-                  )}
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-          
-          <Grid item xs={12} md={6}>
-            <Card variant="outlined" sx={{ height: '100%' }}>
-              <CardContent>
-                <Typography variant="subtitle1" gutterBottom>
-                  Improvement Potential
-                </Typography>
-                <Alert severity="info" sx={{ mb: 2 }}>
-                  <Typography variant="body2">
-                    Implementing all recommendations could lower your risk score to approximately{' '}
-                    <Box component="span" sx={{ fontWeight: 'bold' }}>
-                      {Math.max(0, riskScore - recommendations.reduce((sum, rec) => {
-                        // Estimate points reduction based on impact
-                        const pointsMap = { high: 15, medium: 10, low: 5, positive: 5 };
-                        return sum + (pointsMap[rec.impact] || 0);
-                      }, 0))}
-                    </Box>
-                  </Typography>
-                </Alert>
-                
-                <Box sx={{ mt: 2 }}>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Expected Benefits:
-                  </Typography>
-                  <Stack spacing={1}>
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <Done color="success" fontSize="small" sx={{ mr: 1 }} />
-                      <Typography variant="body2">
-                        Lower interest rates on borrowing
-                      </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <Done color="success" fontSize="small" sx={{ mr: 1 }} />
-                      <Typography variant="body2">
-                        Increased borrowing capacity
-                      </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <Done color="success" fontSize="small" sx={{ mr: 1 }} />
-                      <Typography variant="body2">
-                        Reduced liquidation risk
-                      </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <Done color="success" fontSize="small" sx={{ mr: 1 }} />
-                      <Typography variant="body2">
-                        Enhanced protocol benefits
-                      </Typography>
-                    </Box>
-                  </Stack>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
-      </Paper>
-      
-      {/* IOTA specific recommendations */}
-      <Typography variant="h6" gutterBottom>
-        IOTA Ecosystem Integration
-      </Typography>
-      
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={6}>
-          <Card variant="outlined">
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
-                <Lightbulb color="primary" sx={{ mr: 1.5, mt: 0.5 }} />
-                <Box>
-                  <Typography variant="subtitle1" gutterBottom>
-                    Leverage IOTA Identity Verification
-                  </Typography>
-                  <Typography variant="body2" paragraph>
-                    IOTA's decentralized identity framework offers secure, privacy-preserving verification that can significantly improve your borrowing terms.
-                  </Typography>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    component={RouterLink}
-                    to="/identity"
-                    endIcon={<ArrowForward />}
-                  >
-                    Explore Identity Verification
-                  </Button>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        
-        <Grid item xs={12} md={6}>
-          <Card variant="outlined">
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
-                <Lightbulb color="primary" sx={{ mr: 1.5, mt: 0.5 }} />
-                <Box>
-                  <Typography variant="subtitle1" gutterBottom>
-                    Utilize Cross-Layer Activities
-                  </Typography>
-                  <Typography variant="body2" paragraph>
-                    Moving assets between IOTA's L1 (Move) and L2 (EVM) demonstrates blockchain expertise and can positively impact your risk assessment.
-                  </Typography>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    component={RouterLink}
-                    to="/cross-layer"
-                    endIcon={<ArrowForward />}
-                  >
-                    Explore Cross-Layer Features
-                  </Button>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+      <Box sx={{ mt: 4 }}>
+        <Alert severity="info" icon={<InfoIcon />}>
+          <Typography variant="subtitle2">
+            AI-Powered Recommendations
+          </Typography>
+          <Typography variant="body2">
+            These recommendations are generated based on your unique risk profile, transaction history, and market conditions. They are updated daily to provide you with the most relevant insights.
+          </Typography>
+        </Alert>
+      </Box>
     </Box>
   );
 };
